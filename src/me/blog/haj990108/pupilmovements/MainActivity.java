@@ -147,7 +147,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
                     File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
                     mCascadeFile = new File(cascadeDir,
                             "haarcascade_eye_tree_eyeglasses.xml");*/
-                    //안경있는 애들 xml파일인데 안경 없으면 인식 안됨. 안경 있으면 되나?
+                    //안경있는 애들 xml파일인데 안경 없으면 인식 안됨. 안경 있으면 되나?/
                     FileOutputStream os = new FileOutputStream(mCascadeFile);
  
                     byte[] buffer = new byte[4096];
@@ -345,48 +345,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         	
         	DETECT_EYE_MOTION(facesArray);
             
-        	//mRgba = mGray.submat(originalEyeArea(r,isClickEyeLeft));
-            
-            /*if ( getClickNum(shrinkArea(r,isClickEyeLeft)) <= 4 && getClickNum(shrinkArea(r,!isClickEyeLeft))>4){
-            	Log.e("MOVE", "CLICK = ("+getClickNum(shrinkArea(r,isClickEyeLeft))+", "+getClickNum(shrinkArea(r,!isClickEyeLeft))+")");//잘 작동
-            	isWink = true;
-            	isUp = isLeft = 0;
-            	
-            }else{
-            	isWink = false;
-            	Imgproc.resize(getCursorReturnMat(shrinkArea(r,isCursorEyeLeft)), mRgba, mRgba.size());//커서정보(이동)+머신러닝
-            	
-            }
-            if(isWink){
-            	Log.d("WINK", "wink = "+"W");
-            }else{
-            	Log.d("WINK", "wink = "+"-");
-            }
-            String s = new String();
-            switch(isLeft){
-            case 1:
-            	s = "L";
-            	break;
-            case -1:
-            	s = "R";
-            	break;
-            case 0:
-            	s = "-";
-            	break;
-            }
-            switch(isUp){
-            case 1:
-            	s += "U";
-            	break;
-            case -1:
-            	s += "D";
-            	break;
-            case 0:
-            	s += "-";
-            	break;
-            }
-            Log.d("MOVE", s);*/
-            
+        	
             
         }else{
         	
