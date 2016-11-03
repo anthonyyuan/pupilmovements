@@ -364,7 +364,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         	}else{
         		toastShowUI("얼굴을 찾을 수 없습니다!");
         	}
-        	//global.setFaceExist(false);
+        	//global.setFaceExist(false);//
         }
         
         //mGray = null;//onCameraViewStopped의 mGray.release()에서 NullPointerException 오류가 생긴다
