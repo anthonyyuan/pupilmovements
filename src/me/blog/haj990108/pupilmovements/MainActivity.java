@@ -318,7 +318,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		} else {
 
 			// Log.d("TAG", "BLC");
-			Imgproc.equalizeHist(mGray, mGray);// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
+			Imgproc.equalizeHist(mGray, mGray);
+			// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
+			// 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
 
 			if (mJavaDetector != null)
 				mJavaDetector.detectMultiScale(mGray, faces, 1.1, 2, 2,
@@ -376,22 +378,22 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			}
 		}
 		
-		MatOfRect eyeLs = new MatOfRect();
+		MatOfRect eyeLs = new MatOfRect(); Mat eyeMomL = smp.submat(eyeML); //Imgproc.equalizeHist(eyeMomL, eyeMomL);
 		if (mJavaDetectorEL != null) {
-			mJavaDetectorEL.detectMultiScale(smp.submat(eyeML), eyeLs, 1.1, 2, 2, 
+			mJavaDetectorEL.detectMultiScale(eyeMomL, eyeLs, 1.1, 2, 2, 
 					new Size(mAbsoluteEyeSize, mAbsoluteEyeSize), new Size()); // 왼눈 검출
 		}
 		Rect[] eyeLArray = eyeLs.toArray();
 		
-		MatOfRect eyeRs = new MatOfRect();
+		MatOfRect eyeRs = new MatOfRect(); Mat eyeMomR = smp.submat(eyeMR); //Imgproc.equalizeHist(eyeMomR, eyeMomR);
 		if (mJavaDetectorER != null) {
-			mJavaDetectorER.detectMultiScale(smp.submat(eyeMR), eyeRs, 1.1, 2, 2, 
+			mJavaDetectorER.detectMultiScale(eyeMomR, eyeRs, 1.1, 2, 2, 
 					new Size(mAbsoluteEyeSize, mAbsoluteEyeSize), new Size());  // 오른눈 검출
 		}
 		Rect[] eyeRArray = eyeRs.toArray();
 		
 		if(eyeLArray.length>0){
-			Rect eyeL = eyeLArray[0];
+			Rect eyeL = eyeLArray[eyeLArray.length - 1]; // 눈썹 찾지 않도록 마지막껄로!
 			Core.rectangle(smp, 
 					new Point(eyeML.x + eyeL.tl().x, eyeML.y + eyeL.tl().y), 
 					new Point(eyeML.x + eyeL.br().x, eyeML.y + eyeL.br().y), FACE_RECT_COLOR, 3); //왼눈 검출 범위
@@ -400,7 +402,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		}
 		
 		if(eyeRArray.length>0){
-			Rect eyeR = eyeRArray[0];
+			Rect eyeR = eyeRArray[eyeRArray.length - 1]; // 눈썹 찾지 않도록 마지막껄로!
 			Core.rectangle(smp, 
 					new Point(eyeMR.x + eyeR.tl().x, eyeMR.y + eyeR.tl().y), 
 					new Point(eyeMR.x + eyeR.br().x, eyeMR.y + eyeR.br().y), FACE_RECT_COLOR, 3); //오른눈 검출 범위
