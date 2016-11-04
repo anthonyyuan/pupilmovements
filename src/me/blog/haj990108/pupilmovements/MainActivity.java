@@ -87,6 +87,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	private float mRelativeFaceSize = 0.5f;
 	private int mAbsoluteFaceSize = 0;
 	private int mAbsoluteEyeSize = 0;
+	
+	private Point eyeCL = new Point(0,0);
+	private Point eyeCR = new Point(1,0);
 
 	private CameraBridgeViewBase mOpenCvCameraView;
 
@@ -314,7 +317,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		if (facesArray.length > 0) {
 			// Log.d("TAG", "-");
 			// Imgproc.equalizeHist(mGray, mGray);
-			DETECT_EYE_MOTION(facesArray); // 얼굴 바로 찾으면 바로 눈 추적!
+			detectEyeLocation(facesArray); // 얼굴 바로 찾으면 바로 눈 추적!
 		} else {
 
 			// Log.d("TAG", "BLC");
@@ -329,7 +332,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			facesArray = faces.toArray();
 
 			if (facesArray.length > 0) {
-				DETECT_EYE_MOTION(facesArray);
+				detectEyeLocation(facesArray);
 			} else {
 				toastShowUI("얼굴을 찾을 수 없습니다!"); // 히스토그램 균일화 이후로도 못찾으면 포기하자.
 			}
@@ -347,7 +350,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return mRgba;
 	}
 
-	private void DETECT_EYE_MOTION(Rect[] facesArray) {
+	private void detectEyeLocation(Rect[] facesArray) {
 		if (isLineVisible)
 			Core.rectangle(mRgba, facesArray[0].tl(), facesArray[0].br(),
 					FACE_RECT_COLOR, 3);// 얼굴 면적을 초록 사각형으로 표시
@@ -392,27 +395,30 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		}
 		Rect[] eyeRArray = eyeRs.toArray();
 		
+		
 		if(eyeLArray.length>0){
 			Rect eyeL = eyeLArray[eyeLArray.length - 1]; // 눈썹 찾지 않도록 마지막껄로!
-			Core.rectangle(smp, 
+			eyeCL = new Point(
+					eyeML.x + 0.5*(eyeL.tl().x + eyeL.br().x),
+					eyeML.y + 0.5*(eyeL.tl().y + eyeL.br().y));
+			/*Core.rectangle(smp, 
 					new Point(eyeML.x + eyeL.tl().x, eyeML.y + eyeL.tl().y), 
-					new Point(eyeML.x + eyeL.br().x, eyeML.y + eyeL.br().y), FACE_RECT_COLOR, 3); //왼눈 검출 범위
+					new Point(eyeML.x + eyeL.br().x, eyeML.y + eyeL.br().y), FACE_RECT_COLOR, 3);*/ //왼눈 검출 범위
 		}else{
 			Log.e("TAG", "no left eye detected");
 		}
 		
 		if(eyeRArray.length>0){
 			Rect eyeR = eyeRArray[eyeRArray.length - 1]; // 눈썹 찾지 않도록 마지막껄로!
-			Core.rectangle(smp, 
+			eyeCR = new Point(
+					eyeMR.x + 0.5*(eyeR.tl().x + eyeR.br().x),
+					eyeMR.y + 0.5*(eyeR.tl().y + eyeR.br().y));
+			/*Core.rectangle(smp, 
 					new Point(eyeMR.x + eyeR.tl().x, eyeMR.y + eyeR.tl().y), 
-					new Point(eyeMR.x + eyeR.br().x, eyeMR.y + eyeR.br().y), FACE_RECT_COLOR, 3); //오른눈 검출 범위
+					new Point(eyeMR.x + eyeR.br().x, eyeMR.y + eyeR.br().y), FACE_RECT_COLOR, 3);*/ //오른눈 검출 범위
 		}else{
 			Log.e("TAG", "no right eye detected");
 		}
-		
-		// 두 사각형이 안뜬다. 검출이 아예 안되는거 같음.
-		
-		
 		// blackLightCompensation(smp, smp);
 		// Imgproc.dilate(smp, smp,
 		// Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new
@@ -424,8 +430,43 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// Imgproc.equalizeHist(smp, smp);//이거도 너무 검게나옴
 		// blackLightCompensation(smp, smp);//눈이미지에 하는거 안정성 떨어짐
 		
-		mRgba = smp;
+		mRgba = adjustedFace(smp);
 
+	}
+	
+	private Mat adjustedFace(Mat faceOnly) { // 얼굴 기울임을 보정함.
+		double eyesCenter_x, eyesCenter_y, dx, dy, len, angle;
+		eyesCenter_x = 0.5*(eyeCL.x + eyeCR.x); eyesCenter_y = 0.5*(eyeCL.y + eyeCR.y);
+		
+		dx = eyeCR.x - eyeCL.x; dy = eyeCR.y - eyeCL.y;
+		len = Math.sqrt(dx*dx + dy*dy);
+		angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+		
+		final double DESIRED_LEFT_EYE_X = 0.16;
+		final double DESIRED_RIGHT_EYE_X = 0.84; // 0.84 = 1 - 0.16
+		final double DESIRED_LEFT_EYE_Y = 0.14; // right와 일치.
+		final int DESIRED_FACE_WIDTH = 150; final int DESIRED_FACE_HEIGHT = 150; // 내가 원하는 표준 얼굴 크기
+		
+		double desiredLen = DESIRED_RIGHT_EYE_X - 0.16; // 내가 원하는 표준 얼굴 내 눈 비율
+		double scale = desiredLen * DESIRED_FACE_WIDTH / len; // 원본 눈 사이 거리 -> 표준 눈 사이 거리
+		
+		
+		double ex = DESIRED_FACE_WIDTH * 0.5 - eyesCenter_x;
+		double ey = DESIRED_FACE_HEIGHT * DESIRED_LEFT_EYE_Y - eyesCenter_y;
+		
+		Mat rot_mat = Imgproc.getRotationMatrix2D(new Point(eyesCenter_x, eyesCenter_y), angle, scale);
+		// 원하는 각도, 크기에 대한 변환 행렬을 취득한다.
+		
+		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (0,2)좌표
+		rot_mat.put(0, 2, colorArr[0] + ex);
+		colorArr = rot_mat.get(1,2);
+		rot_mat.put(1, 2, colorArr[0] + ey); // 원하는 중심으로 눈의 중심을 이동
+		
+		Mat adjustedFace = new Mat(DESIRED_FACE_WIDTH, DESIRED_FACE_HEIGHT, faceOnly.type(), new Scalar(128));
+		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
+		Imgproc.warpAffine(faceOnly, adjustedFace, rot_mat, adjustedFace.size()); // 최대 크기로 할려면 Imgproc.INTER_LINEAR
+		
+		return adjustedFace;
 	}
 	
 	private Rect mcs_eyearea(Rect face, boolean isEyeLeft) { // face.tl()를 원점으로 한다.
