@@ -136,18 +136,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
  
  
                 try {
-                    //==얼굴전면==//
+                    // 얼굴 찾기 위한 cascade 불러옴
                     InputStream is = getResources().openRawResource(
                             R.raw.lbpcascade_frontalface);
                     File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
                     mCascadeFile = new File(cascadeDir,
                             "lbpcascade_frontalface.xml");
-                	/*InputStream is = getResources().openRawResource(
-                            R.raw.haarcascade_eye_tree_eyeglasses);
-                    File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
-                    mCascadeFile = new File(cascadeDir,
-                            "haarcascade_eye_tree_eyeglasses.xml");*/
-                    //안경있는 애들 xml파일인데 안경 없으면 인식 안됨. 안경 있으면 되나?/
+                	
                     FileOutputStream os = new FileOutputStream(mCascadeFile);
  
                     byte[] buffer = new byte[4096];
@@ -158,40 +153,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
                     is.close();
                     os.close();
  
-                    //==우측눈==//
-                    InputStream iser = getResources().openRawResource(
-                            R.raw.haarcascade_righteye_2splits);
-                    File cascadeDirER = getDir("cascadeER",
-                            Context.MODE_PRIVATE);
-                    File cascadeFileER = new File(cascadeDirER,
-                            "haarcascade_eye_right.xml");
-                    FileOutputStream oser = new FileOutputStream(cascadeFileER);
- 
-                    byte[] bufferER = new byte[4096];
-                    int bytesReadER;
-                    while ((bytesReadER = iser.read(bufferER)) != -1) {
-                        oser.write(bufferER, 0, bytesReadER);
-                    }
-                    iser.close();
-                    oser.close();
                     
-                    //==좌측눈==//
-                    InputStream isel = getResources().openRawResource(
-                            R.raw.haarcascade_lefteye_2splits);
-                    File cascadeDirEL = getDir("cascadeER",
-                            Context.MODE_PRIVATE);
-                    File cascadeFileEL = new File(cascadeDirEL,
-                            "haarcascade_eye_right.xml");
-                    FileOutputStream osel = new FileOutputStream(cascadeFileEL);
-                     
-                    byte[] bufferEL = new byte[4096];
-                    int bytesReadEL;
-                    while ((bytesReadEL = isel.read(bufferEL)) != -1) {
-                    	osel.write(bufferEL, 0, bytesReadEL);
-                    }
-                    isel.close();
-                    osel.close();
-                    //-- end --//
  
                     mJavaDetector = new CascadeClassifier(
                             mCascadeFile.getAbsolutePath());
@@ -202,23 +164,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
                         Log.i(TAG, "Loaded cascade classifier from "
                                 + mCascadeFile.getAbsolutePath());
                     
-                    mJavaDetectorEyeR = new CascadeClassifier(
-                            cascadeFileER.getAbsolutePath());
-                    if (mJavaDetectorEyeR.empty()) {
-                        Log.e(TAG, "Failed to load cascade classifier");
-                        mJavaDetectorEyeR = null;
-                    } else
-                        Log.i(TAG, "Loaded cascade classifier from "
-                                + mCascadeFile.getAbsolutePath());
- 
-                    mJavaDetectorEyeL = new CascadeClassifier(
-                            cascadeFileEL.getAbsolutePath());
-                    if (mJavaDetectorEyeL.empty()) {
-                        Log.e(TAG, "Failed to load cascade classifier");
-                        mJavaDetectorEyeL = null;
-                    } else
-                        Log.i(TAG, "Loaded cascade classifier from "
-                                + mCascadeFile.getAbsolutePath());
  
                     cascadeDir.delete();
  
@@ -298,8 +243,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         mRgba.release();
         if(isZoomwindowVisible)
         	mZoomWindow.release();
-        
-        //mZoomWindow2.release();
     }
     static boolean isTablet (Context context) {
         int xlargeBit = 4; // Configuration.SCREENLAYOUT_SIZE_XLARGE;  // upgrade to HC SDK to get this 
@@ -333,24 +276,25 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         }
         
         MatOfRect faces = new MatOfRect();
- 
+        
+        
         if (mJavaDetector != null)
             mJavaDetector.detectMultiScale(mGray, faces, 1.1, 2,
                     2,
                     new Size(mAbsoluteFaceSize, mAbsoluteFaceSize),
-                    new Size());
+                    new Size()); // 얼굴 검색!
  
         Rect[] facesArray = faces.toArray();
+        
         if(facesArray.length > 0){
-        	
-        	DETECT_EYE_MOTION(facesArray);
-            
-        	
-            
+        	//Log.d("TAG", "-");
+        	DETECT_EYE_MOTION(facesArray); //얼굴 바로 찾으면 바로 눈 추적!
         }else{
+
+    		//Log.d("TAG", "BLC");
+
+            Imgproc.equalizeHist(mGray, mGray);// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
         	
-        	
-        	blackLightCompensation(mGray, mGray);// TODO : mGray를 BLC시킴. blackLightCompensation
         	if (mJavaDetector != null)
                 mJavaDetector.detectMultiScale(mGray, faces, 1.1, 2,
                         2,
@@ -359,10 +303,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         	facesArray = faces.toArray();
         	
         	if(facesArray.length > 0){
-        		Log.d("TAG", "BLC");
         		DETECT_EYE_MOTION(facesArray);
         	}else{
-        		toastShowUI("얼굴을 찾을 수 없습니다!");
+        		toastShowUI("얼굴을 찾을 수 없습니다!"); // blc이후로도 못찾으면 포기하자.
         	}
         	//global.setFaceExist(false);
         }
@@ -498,7 +441,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
     	toast.setGravity(Gravity.CENTER, 0, 0);
     	toast.show();
     }
-    //--안내 메세지 관련--//
+    //--안내 메세지 관련--// 
     
     
     private void upBriCon(Mat src, Mat dst, double bri, double con)
