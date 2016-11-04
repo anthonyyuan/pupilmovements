@@ -86,6 +86,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	private float mRelativeFaceSize = 0.5f;
 	private int mAbsoluteFaceSize = 0;
+	private int mAbsoluteEyeSize = 0;
 
 	private CameraBridgeViewBase mOpenCvCameraView;
 
@@ -312,11 +313,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 		if (facesArray.length > 0) {
 			// Log.d("TAG", "-");
+			// Imgproc.equalizeHist(mGray, mGray);
 			DETECT_EYE_MOTION(facesArray); // 얼굴 바로 찾으면 바로 눈 추적!
 		} else {
 
 			// Log.d("TAG", "BLC");
-
 			Imgproc.equalizeHist(mGray, mGray);// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
 
 			if (mJavaDetector != null)
@@ -328,7 +329,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			if (facesArray.length > 0) {
 				DETECT_EYE_MOTION(facesArray);
 			} else {
-				toastShowUI("얼굴을 찾을 수 없습니다!"); // blc이후로도 못찾으면 포기하자.
+				toastShowUI("얼굴을 찾을 수 없습니다!"); // 히스토그램 균일화 이후로도 못찾으면 포기하자.
 			}
 			// global.setFaceExist(false);
 		}
@@ -364,8 +365,53 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		}
 
 		Rect r = facesArray[0];
-		Mat smp = mGray.submat(originalEyeArea(r, true));
-		blackLightCompensation(smp, smp);
+		Mat smp = mGray.submat(r); // 얼굴 영역만 추림 // mGray.submat(originalEyeArea(r, true));
+		Rect eyeML = mcs_eyearea(r, true); Rect eyeMR = mcs_eyearea(r, false); // 눈 검출영역
+		
+		
+		if (mAbsoluteEyeSize == 0) {
+			int height = eyeML.height;
+			if (Math.round(height * mRelativeFaceSize) > 0) {
+				mAbsoluteEyeSize = Math.round(height * mRelativeFaceSize);
+			}
+		}
+		
+		MatOfRect eyeLs = new MatOfRect();
+		if (mJavaDetectorEL != null) {
+			mJavaDetectorEL.detectMultiScale(smp.submat(eyeML), eyeLs, 1.1, 2, 2, 
+					new Size(mAbsoluteEyeSize, mAbsoluteEyeSize), new Size()); // 왼눈 검출
+		}
+		Rect[] eyeLArray = eyeLs.toArray();
+		
+		MatOfRect eyeRs = new MatOfRect();
+		if (mJavaDetectorER != null) {
+			mJavaDetectorER.detectMultiScale(smp.submat(eyeMR), eyeRs, 1.1, 2, 2, 
+					new Size(mAbsoluteEyeSize, mAbsoluteEyeSize), new Size());  // 오른눈 검출
+		}
+		Rect[] eyeRArray = eyeRs.toArray();
+		
+		if(eyeLArray.length>0){
+			Rect eyeL = eyeLArray[0];
+			Core.rectangle(smp, 
+					new Point(eyeML.x + eyeL.tl().x, eyeML.y + eyeL.tl().y), 
+					new Point(eyeML.x + eyeL.br().x, eyeML.y + eyeL.br().y), FACE_RECT_COLOR, 3); //왼눈 검출 범위
+		}else{
+			Log.e("TAG", "no left eye detected");
+		}
+		
+		if(eyeRArray.length>0){
+			Rect eyeR = eyeRArray[0];
+			Core.rectangle(smp, 
+					new Point(eyeMR.x + eyeR.tl().x, eyeMR.y + eyeR.tl().y), 
+					new Point(eyeMR.x + eyeR.br().x, eyeMR.y + eyeR.br().y), FACE_RECT_COLOR, 3); //오른눈 검출 범위
+		}else{
+			Log.e("TAG", "no right eye detected");
+		}
+		
+		// 두 사각형이 안뜬다. 검출이 아예 안되는거 같음.
+		
+		
+		// blackLightCompensation(smp, smp);
 		// Imgproc.dilate(smp, smp,
 		// Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new
 		// Size(2,2)));//검은색 줄이기
@@ -375,8 +421,45 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 		// Imgproc.equalizeHist(smp, smp);//이거도 너무 검게나옴
 		// blackLightCompensation(smp, smp);//눈이미지에 하는거 안정성 떨어짐
+		
 		mRgba = smp;
 
+	}
+	
+	private Rect mcs_eyearea(Rect face, boolean isEyeLeft) { // face.tl()를 원점으로 한다.
+		
+		double EYE_SX = 0.10;
+		double EYE_SY = 0.19;
+		double EYE_SW = 0.40;
+		double EYE_SH = 0.39;
+		
+		int x = isEyeLeft ? (int) (face.width * EYE_SX) : (int) (face.width * (1.0 - EYE_SW - EYE_SX));
+
+		face = new Rect(
+				x, // face.x + x
+				(int) (face.height * EYE_SY), // (int) (face.y + (face.height * EYE_SY))
+				(int) (face.width * EYE_SW),
+				(int) (face.height * EYE_SH) );
+
+		return face;
+	}
+	
+	private Rect originalEyeface(Rect area, boolean isEyeLeft) {
+
+		if (isEyeLeft) {
+			area = new Rect(area.x + area.width / 16,
+					(int) (area.y + (area.height / 3.8)),
+					(area.width - 2 * area.width / 16) / 2,
+					(int) (area.height / 3.0));// eyearea_left
+		} else {
+			area = new Rect(area.x + area.width / 16
+					+ (area.width - 2 * area.width / 16) / 2,
+					(int) (area.y + (area.height / 3.8)),
+					(area.width - 2 * area.width / 16) / 2,
+					(int) (area.height / 3.0));// eyearea_right
+		}
+
+		return area;
 	}
 
 	private void blackLightCompensation(Mat src, Mat dst) {
@@ -430,23 +513,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return arr.get(freqArr.indexOf(Collections.max(freqArr)));
 	}
 
-	private Rect originalEyeArea(Rect area, boolean isEyeLeft) {
-
-		if (isEyeLeft) {
-			area = new Rect(area.x + area.width / 16,
-					(int) (area.y + (area.height / 3.8)),
-					(area.width - 2 * area.width / 16) / 2,
-					(int) (area.height / 3.0));// eyearea_left
-		} else {
-			area = new Rect(area.x + area.width / 16
-					+ (area.width - 2 * area.width / 16) / 2,
-					(int) (area.y + (area.height / 3.8)),
-					(area.width - 2 * area.width / 16) / 2,
-					(int) (area.height / 3.0));// eyearea_right
-		}
-
-		return area;
-	}
+	
 
 	// --안내 메세지 관련--//
 	private Toast toast = null;
