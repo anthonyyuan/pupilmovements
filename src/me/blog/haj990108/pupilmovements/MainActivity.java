@@ -468,7 +468,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		return stabilizated_eye(adjustedFace);
 		
-		
 		/*앞으로 할거
 		 * 1. 얼굴 좌우에 대한 히스토그램 균일화
 		 * 2. 안경 착용 보정
@@ -485,7 +484,51 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return cutted_eye_area(face, isEyeLeft, EYE_SX, EYE_SY, EYE_SW, EYE_SH);
 	}
 	
-	
+	private Mat equalizeHistLR(Mat src){ // 너무 느림(3fps). 좌우의 그림자 정도가 같아지지만, 광원에 따른 변화가 아예 없어지진 않음..
+		int w = src.rows(); int h  = src.cols();
+		Mat ori = new Mat(); Imgproc.equalizeHist(src, ori);
+		
+		int midX = w/2;
+		
+		Mat leftSide = src.submat(new Rect(0,0,midX,h));
+		Mat rightSide = src.submat(new Rect(midX,0,w-midX,h));
+		
+		Imgproc.equalizeHist(leftSide, leftSide);
+		Imgproc.equalizeHist(rightSide, rightSide);
+		
+		
+		Mat dst = new Mat(src.rows(), src.cols(), src.type());
+		
+		for(int y=0; y<h; y++){
+			for(int x=0; x<w; x++){
+				int v;
+				
+				if(x < w/4){ // 0~0.25 : 왼쪽 그대로
+					v = (int) Math.round(leftSide.get(y,x)[0]);// int로의 강제 형변환은 내림이다.
+				}
+				else if(x < w*2/4){ // 0.25~0.5 : 왼쪽 + 가운데 그라데이션
+					double lv = leftSide.get(y,x)[0];
+					double ov = ori.get(y,x)[0];
+					double d = ((double)x - w*1/4) / (w/4); //w랑 x가 정수여서 d도 아예 정수만 나왔다 ㅆㅃ
+					
+					v = (int) Math.round((1 - d) * lv + d * ov); // 색 그라데이션
+				}
+				else if(x < w*3/4){ // 0.5~0.75 : 오른쪽 + 가운데 그라데이션
+					double rv = rightSide.get(y,x-midX)[0];
+					double ov = ori.get(y,x)[0];
+					double d = ((double)x - w*2/4) / (w/4);
+					
+					v = (int) Math.round((1 - d) * ov + d * rv); // 색 그라데이션
+				}
+				else { // 0.75~1 : 오른쪽 그대로
+					v = (int) Math.round(rightSide.get(y,x-midX)[0]);
+				}
+				
+				dst.put(y, x, v);
+			}
+		}
+		return dst;
+	}
 	
 	////====여기 아래서부터는 내가 알고리즘 구조구성을 위해 만든 코드들이다===////
 	
