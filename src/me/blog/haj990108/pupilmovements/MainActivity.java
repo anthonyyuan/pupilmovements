@@ -77,7 +77,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	private CascadeClassifier mJavaDetectorER;
 
 	private boolean isLineVisible = true;
-	private boolean isZoomwindowVisible = true;
+	private boolean isZoomwindowVisible = false;
 
 	private double rMean = 0;
 
@@ -89,7 +89,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	private int mAbsoluteEyeSize = 0;
 	
 	private Point eyeCL = new Point(0,0);
-	private Point eyeCR = new Point(1,0);
+	private Point eyeCR = new Point(1,0); // 각도 돌릴때 에러 방지
 
 	private CameraBridgeViewBase mOpenCvCameraView;
 
@@ -262,7 +262,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	public void onDestroy() {
 		super.onDestroy();
-		mOpenCvCameraView.disableView();
+		finish(); // mOpenCvCameraView.disableView();
 	}
 
 	public void onCameraViewStarted(int width, int height) {
@@ -457,7 +457,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Mat rot_mat = Imgproc.getRotationMatrix2D(new Point(eyesCenter_x, eyesCenter_y), angle, scale);
 		// 원하는 각도, 크기에 대한 변환 행렬을 취득한다.
 		
-		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (0,2)좌표
+		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (x,y)=(2,0)좌표
 		rot_mat.put(0, 2, colorArr[0] + ex);
 		colorArr = rot_mat.get(1,2);
 		rot_mat.put(1, 2, colorArr[0] + ey); // 원하는 중심으로 눈의 중심을 이동
@@ -466,7 +466,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
 		Imgproc.warpAffine(faceOnly, adjustedFace, rot_mat, adjustedFace.size()); // 최대 크기로 할려면 Imgproc.INTER_LINEAR
 		
-		return adjustedFace;
+		return stabilizated_eye(adjustedFace);
+		
+		
+		/*앞으로 할거
+		 * 1. 얼굴 좌우에 대한 히스토그램 균일화
+		 * 2. 안경 착용 보정
+		 * 3. 얼굴 중점(eyesCenter)기준으로 안정적인 눈영역 추리기 및 동공만 추리기*/
 	}
 	
 	private Rect mcs_eyearea(Rect face, boolean isEyeLeft) { // face.tl()를 원점으로 한다.
@@ -476,36 +482,52 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		double EYE_SW = 0.40;
 		double EYE_SH = 0.39;
 		
+		return cutted_eye_area(face, isEyeLeft, EYE_SX, EYE_SY, EYE_SW, EYE_SH);
+	}
+	
+	
+	
+	////====여기 아래서부터는 내가 알고리즘 구조구성을 위해 만든 코드들이다===////
+	
+	private Mat stabilizated_eye(Mat final_face){
+		Rect eyeL = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),true);
+		Rect eyeR = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),false);
+		//Mat나 Rect에서 tl()은 (1,1)가 아닌 (0,0)이다!!
+		
+		Core.rectangle(final_face, eyeL.tl(), eyeL.br(), FACE_RECT_COLOR, 1);
+		Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
+		
+		//Imgproc.equalizeHist(final_face.submat(eyeL), final_face.submat(eyeL));
+		// submat은 원본 Mat에서 주소만 갖고오는것! submat을 변형하면 원본 출력시 영향을 준다! 이를 막을려면 mat.clone() 쓰자.
+		
+		return final_face;
+	}
+	
+	private Rect final_eye_area(Rect final_face, boolean isEyeLeft) { // final_face.tl()를 원점으로 한다.
+		
+		double EYE_SX = 0;
+		double EYE_SY = 0;
+		double EYE_SW = 0.40;
+		double EYE_SH = 0.39;
+		
+		return cutted_eye_area(final_face, isEyeLeft, EYE_SX, EYE_SY, EYE_SW, EYE_SH);
+	}
+	
+	private Rect cutted_eye_area(Rect face, boolean isEyeLeft, double EYE_SX, double EYE_SY, double EYE_SW, double EYE_SH) {
+		
 		int x = isEyeLeft ? (int) (face.width * EYE_SX) : (int) (face.width * (1.0 - EYE_SW - EYE_SX));
 
 		face = new Rect(
 				x, // face.x + x
-				(int) (face.height * EYE_SY), // (int) (face.y + (face.height * EYE_SY))
+				(int) (face.height * EYE_SY), // face의 부모 Mat를 원점으로 잡는 법 : (int) (face.y + (face.height * EYE_SY))
 				(int) (face.width * EYE_SW),
 				(int) (face.height * EYE_SH) );
 
 		return face;
 	}
 	
-	private Rect originalEyeface(Rect area, boolean isEyeLeft) {
-
-		if (isEyeLeft) {
-			area = new Rect(area.x + area.width / 16,
-					(int) (area.y + (area.height / 3.8)),
-					(area.width - 2 * area.width / 16) / 2,
-					(int) (area.height / 3.0));// eyearea_left
-		} else {
-			area = new Rect(area.x + area.width / 16
-					+ (area.width - 2 * area.width / 16) / 2,
-					(int) (area.y + (area.height / 3.8)),
-					(area.width - 2 * area.width / 16) / 2,
-					(int) (area.height / 3.0));// eyearea_right
-		}
-
-		return area;
-	}
-
-	private void blackLightCompensation(Mat src, Mat dst) {
+	
+ 	private void blackLightCompensation(Mat src, Mat dst) {
 		// rate : 0~1의 실수로서 이 rate보다 어두운 빛은 전부다 위로 올려버린다.
 		// if(rate >= 1 || rate < 0) Log.e("TAG",
 		// "Rate isn't on 0~1 at blackLightCompensation");
