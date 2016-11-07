@@ -570,7 +570,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
-		remove_eyeglass(final_face.submat(eyeLR));
+		warn_eyeglasses(final_face.submat(eyeLR));
 		
 		//맨 아래의 /*를 지우자
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
@@ -596,7 +596,25 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return final_face;
 	}
 	
-	private void remove_eyeglass(Mat src){
+	private void warn_eyeglasses(Mat src){
+		
+		Imgproc.equalizeHist(src, src);
+		//Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
+		// 가우시안에 비해 특징모서리는 살려둠.
+		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
+		
+		
+		EyeglassesFloodfill : for(int y = 0; y < src.rows(); y++){
+    		if (src.get(y,src.cols()/2)[0] > 10){
+    			toastShowUI("안경을 벗어주세요!");
+    			break EyeglassesFloodfill;
+    		}
+        }
+		
+	}
+	
+	private void remove_eyeglasses(Mat src){
+		//안경 인식을 해도 너무 불안정해서 막 기울어짐. 안경얼굴인식 따로 만들고 이거 쓰자.
 		//clone이랑 copyTo 둘다 hard copy 라는데 왜 그러지... http://answers.opencv.org/question/7682
 		
 		Mat skin = src.clone(); skin.copyTo(src);
@@ -614,36 +632,25 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// -> 블러 할려면 아예 그냥 하나로 합쳐서 지우는게 낫다. isEyeLeft 제거하자.
 		
 		
-		/*int l = isEyeLeft ? 1 : 0;
-		final int EYE_GLASS_COLOR = 100;
 		
-		
-		EyeglassFloodfill : for(int y = 0; y < eye.rows(); y++){
-    		if (eye.get(y,(eye.cols() - 1)*l)[0] > 10){
+		final int EYE_GLASSES_COLOR = 100;
+		EyeglassesFloodfill : for(int y = 0; y < eye.rows(); y++){
+    		if (eye.get(y,eye.cols()/2)[0] > 10){
     			Imgproc.floodFill(eye, Mat.zeros(eye.rows() + 2, eye.cols() + 2, CvType.CV_8U), 
-    					new Point((eye.cols() - 1)*l,y), new Scalar(EYE_GLASS_COLOR));
-    			break EyeglassFloodfill;
+    					new Point(eye.cols()/2,y), new Scalar(EYE_GLASSES_COLOR));
+    			break EyeglassesFloodfill;
     		}
         }
-        EyeglassFloodfill : for(int y = eye.rows()-1; y >= 0; y--){
-    		if (eye.get(y,(eye.cols() - 1)*l)[0] > 10){
-    			Imgproc.floodFill(eye, Mat.zeros(eye.rows() + 2, eye.cols() + 2, CvType.CV_8U), 
-    					new Point((eye.cols() - 1)*l,y), new Scalar(EYE_GLASS_COLOR));
-    			break EyeglassFloodfill;
-    		}
-        }
-        
-        for(int x = 0; x < eye.cols(); x++){
+		
+		for(int x = 0; x < eye.cols(); x++){
         	for(int y = 0; y < eye.rows(); y++){
-        		if (eye.get(y,x)[0] != EYE_GLASS_COLOR){
+        		if (eye.get(y,x)[0] != EYE_GLASSES_COLOR){
         			eye.put(y, x, 0);
         		}
             }
-        } // eye : 검은 배경에 EYE_GLASS_COLOR로 안경만 칠함.
-		 */		
-        eye.copyTo(src);
-        
-		/*int skin_color = 0, skin_size = 0;
+        } // eye : 검은 배경에 EYE_GLASSES_COLOR로 안경만 칠함. (여기까지는 됨.)
+		
+		int skin_color = 0, skin_size = 0;
 		
 		for(int x = 0; x < skinArea.cols(); x++){
         	for(int y = 0; y < skinArea.rows(); y++){
@@ -655,12 +662,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		for(int x = 0; x < eye.cols(); x++){
         	for(int y = 0; y < eye.rows(); y++){
-        		if (eye.get(y,x)[0] == EYE_GLASS_COLOR){
+        		if (eye.get(y,x)[0] == EYE_GLASSES_COLOR){
         			skin.put(y, x, skin_color);
         		}
             }
-        }*/
-		//return eye;
+        }//안경 영역 제거 (아직까지는 안됨.)
+		
+		skin.copyTo(src);
 	}
 	
 	private Rect final_eye_area(Rect final_face, boolean isEyeLeft) { // final_face.tl()를 원점으로 한다.
@@ -685,8 +693,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 		return face;
 	}
-	
-	
 	
 	
  	private void blackLightCompensation(Mat src, Mat dst) {
