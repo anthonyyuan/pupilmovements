@@ -320,24 +320,43 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			// Log.d("TAG", "-");
 			// Imgproc.equalizeHist(mGray, mGray);
 			detectEyeLocation(facesArray); // 얼굴 바로 찾으면 바로 눈 추적!
-		} else {
+		} else { // 얼굴찾기 실험1 : 히스토그램 균일화 후 눈 추적!
 
-			// Log.d("TAG", "BLC");
+			Mat test = new Mat();
+			Imgproc.equalizeHist(mGray, test); // 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
 			
-			Imgproc.equalizeHist(mGray, mGray); // TODO : 역광보정까지 넣으면 진짜 대박
-			// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
-			// 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
 
 			if (mJavaDetector != null)
-				mJavaDetector.detectMultiScale(mGray, faces, 1.1, 2, 2,
+				mJavaDetector.detectMultiScale(test, faces, 1.1, 2, 2,
 						new Size(mAbsoluteFaceSize, mAbsoluteFaceSize),
 						new Size());
 			facesArray = faces.toArray();
 
 			if (facesArray.length > 0) {
 				detectEyeLocation(facesArray);
-			} else {
-				toastShowUI("얼굴을 찾을 수 없습니다!"); // 히스토그램 균일화 이후로도 못찾으면 포기하자.
+			} else { // 얼굴찾기 실험2 : BLC
+				
+				// TODO : 역광보정 +  안경추적까지 넣으면 진짜 대박
+				// 안경때문에 나중에 눈영역 histEq할때 동공이 안보임. -> 눈 영역따고 바로 안경 지우고 histEq해야...
+				
+				test = new Mat();
+				blackLightCompensation(mGray,test);
+				//Imgproc.equalizeHist(test, test); // 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
+				
+
+				if (mJavaDetector != null)
+					mJavaDetector.detectMultiScale(test, faces, 1.1, 2, 2,
+							new Size(mAbsoluteFaceSize, mAbsoluteFaceSize),
+							new Size());
+				facesArray = faces.toArray();
+
+				if (facesArray.length > 0) {
+					detectEyeLocation(facesArray);
+				}else{
+					//blackLightCompensation(mGray,mGray);
+					//mRgba = mGray;
+					toastShowUI("얼굴을 찾을 수 없습니다!"); // 히스토그램 균일화 이후로도 못찾으면 포기하자.
+				}
 			}
 			// global.setFaceExist(false);
 		}
@@ -437,7 +456,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	}
 	
-	double prev_angle = 0;
+	double prev_angle, prev_scale = 0;
 	
 	private Mat adjustedFace(Mat faceOnly) { // 얼굴 기울임을 보정함.
 		double eyesCenter_x, eyesCenter_y, dx, dy, len, angle;
@@ -446,6 +465,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		dx = eyeCR.x - eyeCL.x; dy = eyeCR.y - eyeCL.y;
 		len = Math.sqrt(dx*dx + dy*dy);
 		angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+		
 		if(prev_angle != 0 && angle > 20 ) angle = prev_angle;
 		prev_angle = angle;
 		
@@ -457,12 +477,16 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		double desiredLen = DESIRED_RIGHT_EYE_X - DESIRED_LEFT_EYE_X; // 내가 원하는 표준 얼굴 내 눈 비율
 		double scale = desiredLen * DESIRED_FACE_WIDTH / len; // 원본 눈 사이 거리 -> 표준 눈 사이 거리
 		
+		if(prev_scale != 0 && scale - prev_scale > 0.3 ) scale = 0.5 * (scale + prev_scale);
+		prev_scale = scale;
 		
 		double ex = DESIRED_FACE_WIDTH * 0.5 - eyesCenter_x;
 		double ey = DESIRED_FACE_HEIGHT * DESIRED_LEFT_EYE_Y - eyesCenter_y;
 		
 		Mat rot_mat = Imgproc.getRotationMatrix2D(new Point(eyesCenter_x, eyesCenter_y), angle, scale);
 		// 원하는 각도, 크기에 대한 변환 행렬을 취득한다.
+		
+		Log.d("TAG", "scale = " + scale);
 		
 		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (x,y)=(2,0)좌표
 		rot_mat.put(0, 2, colorArr[0] + ex);
@@ -476,7 +500,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return stabilizated_eye(adjustedFace);
 		
 		/*앞으로 할거
-		 * 1. 얼굴 좌우에 대한 히스토그램 균일화
 		 * 2. 안경 착용 보정
 		 * 3. 얼굴 중점(eyesCenter)기준으로 안정적인 눈영역 추리기 및 동공만 추리기*/
 	}
@@ -540,16 +563,20 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	////====여기 아래서부터는 내가 알고리즘 구조구성을 위해 만든 코드들이다===////
 	
 	private Mat stabilizated_eye(Mat final_face){
-		//Imgproc.cvtColor(final_face, final_face, Imgproc.COLOR_GRAY2RGB);
-		//Imgproc.bilateralFilter(final_face, final_face, 15, 80, 80);
-		// TODO : 가우시안에 비해 특징모서리는 살려둠. 이거 꼭 되게 하자.
 		
 		Rect eyeL = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),true);
 		Rect eyeR = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),false);
 		//Mat나 Rect에서 tl()은 (1,1)가 아닌 (0,0)이다!!
 		
-		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
+		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
+		remove_eyeglass(final_face.submat(eyeLR));
+		
+		//맨 아래의 /*를 지우자
+		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
+		//remove_eyeglass(mat_eyeL, true);
+				
+		/*
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		// submat은 원본 Mat에서 주소만 갖고오는것! submat을 변형하면 원본 출력시 영향을 준다! 이를 막을려면 mat.clone() 쓰자.
 		
@@ -567,6 +594,73 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		//Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
 		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
+	}
+	
+	private void remove_eyeglass(Mat src){
+		//clone이랑 copyTo 둘다 hard copy 라는데 왜 그러지... http://answers.opencv.org/question/7682
+		
+		Mat skin = src.clone(); skin.copyTo(src);
+		Mat eye = src.clone(), skinArea = src.clone(); //src.copyTo(eye); src.copyTo(skinArea);
+		
+		Imgproc.equalizeHist(src, src);
+		Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
+		// 가우시안에 비해 특징모서리는 살려둠. // 얘는 src랑 dst 달라야 함. http://stackoverflow.com/questions/38460950
+		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
+		
+		src.copyTo(eye); //작동 됨. thr(src,src)에서 src = skin;로 하면 그냥 threshold된 src 나온다. (영향 x)
+		
+		//TODO : 어쩌피 블러해야지 눈과 안경영역이 깔끔하게 분리가 됨
+		// -> 블러를 영역 나눠서 하면 맨 끝에 테두리 영역은 값이 0처리되므로 끝에 안경코가 안닿는 수가 있음
+		// -> 블러 할려면 아예 그냥 하나로 합쳐서 지우는게 낫다. isEyeLeft 제거하자.
+		
+		
+		/*int l = isEyeLeft ? 1 : 0;
+		final int EYE_GLASS_COLOR = 100;
+		
+		
+		EyeglassFloodfill : for(int y = 0; y < eye.rows(); y++){
+    		if (eye.get(y,(eye.cols() - 1)*l)[0] > 10){
+    			Imgproc.floodFill(eye, Mat.zeros(eye.rows() + 2, eye.cols() + 2, CvType.CV_8U), 
+    					new Point((eye.cols() - 1)*l,y), new Scalar(EYE_GLASS_COLOR));
+    			break EyeglassFloodfill;
+    		}
+        }
+        EyeglassFloodfill : for(int y = eye.rows()-1; y >= 0; y--){
+    		if (eye.get(y,(eye.cols() - 1)*l)[0] > 10){
+    			Imgproc.floodFill(eye, Mat.zeros(eye.rows() + 2, eye.cols() + 2, CvType.CV_8U), 
+    					new Point((eye.cols() - 1)*l,y), new Scalar(EYE_GLASS_COLOR));
+    			break EyeglassFloodfill;
+    		}
+        }
+        
+        for(int x = 0; x < eye.cols(); x++){
+        	for(int y = 0; y < eye.rows(); y++){
+        		if (eye.get(y,x)[0] != EYE_GLASS_COLOR){
+        			eye.put(y, x, 0);
+        		}
+            }
+        } // eye : 검은 배경에 EYE_GLASS_COLOR로 안경만 칠함.
+		 */		
+        eye.copyTo(src);
+        
+		/*int skin_color = 0, skin_size = 0;
+		
+		for(int x = 0; x < skinArea.cols(); x++){
+        	for(int y = 0; y < skinArea.rows(); y++){
+        		if (skinArea.get(y,x)[0] < 10) skin_color += skin.get(y,x)[0]; skin_size ++;
+            }
+        }
+		
+		skin_color /= skin_size; // 피부색 평균 구함.
+		
+		for(int x = 0; x < eye.cols(); x++){
+        	for(int y = 0; y < eye.rows(); y++){
+        		if (eye.get(y,x)[0] == EYE_GLASS_COLOR){
+        			skin.put(y, x, skin_color);
+        		}
+            }
+        }*/
+		//return eye;
 	}
 	
 	private Rect final_eye_area(Rect final_face, boolean isEyeLeft) { // final_face.tl()를 원점으로 한다.
@@ -591,6 +685,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 		return face;
 	}
+	
+	
 	
 	
  	private void blackLightCompensation(Mat src, Mat dst) {
