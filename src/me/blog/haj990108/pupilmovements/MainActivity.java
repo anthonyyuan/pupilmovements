@@ -20,6 +20,7 @@ import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -38,6 +39,7 @@ import org.opencv.objdetect.Objdetect;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -321,7 +323,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		} else {
 
 			// Log.d("TAG", "BLC");
-			Imgproc.equalizeHist(mGray, mGray);
+			
+			Imgproc.equalizeHist(mGray, mGray); // TODO : 역광보정까지 넣으면 진짜 대박
 			// 얼굴 바로 못찾으면 히스토그램 균일화 후 눈 추적!
 			// 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
 
@@ -434,6 +437,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	}
 	
+	double prev_angle = 0;
+	
 	private Mat adjustedFace(Mat faceOnly) { // 얼굴 기울임을 보정함.
 		double eyesCenter_x, eyesCenter_y, dx, dy, len, angle;
 		eyesCenter_x = 0.5*(eyeCL.x + eyeCR.x); eyesCenter_y = 0.5*(eyeCL.y + eyeCR.y);
@@ -441,13 +446,15 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		dx = eyeCR.x - eyeCL.x; dy = eyeCR.y - eyeCL.y;
 		len = Math.sqrt(dx*dx + dy*dy);
 		angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+		if(prev_angle != 0 && angle > 20 ) angle = prev_angle;
+		prev_angle = angle;
 		
 		final double DESIRED_LEFT_EYE_X = 0.16;
 		final double DESIRED_RIGHT_EYE_X = 0.84; // 0.84 = 1 - 0.16
 		final double DESIRED_LEFT_EYE_Y = 0.14; // right와 일치.
 		final int DESIRED_FACE_WIDTH = 150; final int DESIRED_FACE_HEIGHT = 150; // 내가 원하는 표준 얼굴 크기
 		
-		double desiredLen = DESIRED_RIGHT_EYE_X - 0.16; // 내가 원하는 표준 얼굴 내 눈 비율
+		double desiredLen = DESIRED_RIGHT_EYE_X - DESIRED_LEFT_EYE_X; // 내가 원하는 표준 얼굴 내 눈 비율
 		double scale = desiredLen * DESIRED_FACE_WIDTH / len; // 원본 눈 사이 거리 -> 표준 눈 사이 거리
 		
 		
@@ -533,16 +540,32 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	////====여기 아래서부터는 내가 알고리즘 구조구성을 위해 만든 코드들이다===////
 	
 	private Mat stabilizated_eye(Mat final_face){
+		//Imgproc.cvtColor(final_face, final_face, Imgproc.COLOR_GRAY2RGB);
+		//Imgproc.bilateralFilter(final_face, final_face, 15, 80, 80);
+		// TODO : 가우시안에 비해 특징모서리는 살려둠. 이거 꼭 되게 하자.
+		
 		Rect eyeL = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),true);
 		Rect eyeR = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),false);
 		//Mat나 Rect에서 tl()은 (1,1)가 아닌 (0,0)이다!!
 		
-		Core.rectangle(final_face, eyeL.tl(), eyeL.br(), FACE_RECT_COLOR, 1);
-		Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
+		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
-		//Imgproc.equalizeHist(final_face.submat(eyeL), final_face.submat(eyeL));
+		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		// submat은 원본 Mat에서 주소만 갖고오는것! submat을 변형하면 원본 출력시 영향을 준다! 이를 막을려면 mat.clone() 쓰자.
 		
+		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
+				15, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+		
+		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
+		 * 공개한 소스코드랑 논문이 제시한 방법이랑 달라. 
+		 * getStructuringElement -> equalizeHist -> bilateralFilter -> threshold -> erode -> canny
+		 * 근데 Kalman filter를 통해 얼굴 영역 변화를 줄일 수 있다든데.. -> 회전 안정화가 시급. 이걸 써볼까?
+		 */
+		
+
+		//Core.rectangle(final_face, eyeL.tl(), eyeL.br(), FACE_RECT_COLOR, 1);
+		//Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
+		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
 	}
 	
