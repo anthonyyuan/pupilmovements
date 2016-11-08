@@ -25,12 +25,15 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
+import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.core.Core.MinMaxLocResult;
+import org.opencv.features2d.FeatureDetector;
+import org.opencv.features2d.KeyPoint;
 import org.opencv.highgui.Highgui;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
@@ -341,7 +344,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 				
 				test = new Mat();
 				blackLightCompensation(mGray,test);
-				//Imgproc.equalizeHist(test, test); // 사실 Cascade 사용 전에는 히스토그램 균일화 하는게 맞다.
+				Imgproc.equalizeHist(test, test);
 				
 
 				if (mJavaDetector != null)
@@ -486,7 +489,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Mat rot_mat = Imgproc.getRotationMatrix2D(new Point(eyesCenter_x, eyesCenter_y), angle, scale);
 		// 원하는 각도, 크기에 대한 변환 행렬을 취득한다.
 		
-		Log.d("TAG", "scale = " + scale);
+		//Log.d("TAG", "scale = " + scale);
 		
 		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (x,y)=(2,0)좌표
 		rot_mat.put(0, 2, colorArr[0] + ex);
@@ -570,18 +573,26 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
-		warn_eyeglasses(final_face.submat(eyeLR));
+		Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
+		warn_eyeglasses(final_face.submat(eyeLR).clone());
 		
 		//맨 아래의 /*를 지우자
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
-		//remove_eyeglass(mat_eyeL, true);
-				
-		/*
-		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
-		// submat은 원본 Mat에서 주소만 갖고오는것! submat을 변형하면 원본 출력시 영향을 준다! 이를 막을려면 mat.clone() 쓰자.
 		
+			
+		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
 				15, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+		
+		/*MatOfKeyPoint matOfKeyPoints = new MatOfKeyPoint();
+        FeatureDetector blobDetector = FeatureDetector.create(FeatureDetector.SIMPLEBLOB);
+        blobDetector.detect(mat_eyeL, matOfKeyPoints);
+        
+        
+        KeyPoint[] blopList = matOfKeyPoints.toArray();
+        
+        Log.d("TAG", "검출된 Blop 갯수 = "+matOfKeyPoints.size());
+        Log.d("TAG", "검출된 Blop 갯수 = "+blopList[0].pt);*/
 		
 		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
 		 * 공개한 소스코드랑 논문이 제시한 방법이랑 달라. 
@@ -595,6 +606,86 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
 	}
+	
+	/*if (learn_frames < 5) {
+	    teplateR = get_template(mJavaDetectorEye, eyearea_right, 24);
+	    teplateL = get_template(mJavaDetectorEye, eyearea_left, 24);
+	    learn_frames++;
+	} else {
+	    // Learning finished, use the new templates for template
+	    // matching
+	    match_eye(eyearea_right, teplateR, method);
+	    match_eye(eyearea_left, teplateL, method);
+
+	}*/
+	private Mat get_template(CascadeClassifier clasificator, Rect area, int size) {
+		/* 이 방법의 문제점 : 가장 어두운 영역을 찾으므로 거의 눈꺼풀과 동공의 교점을 찾는다.
+		 * 또한, 원의 기하학적 특성을 고려하지 않으므로 정확한 동공중점을 찾을 수 없다. */
+        Mat template = new Mat();
+        Mat mROI = mGray.submat(area);
+        MatOfRect eyes = new MatOfRect();
+        Point iris = new Point();
+        Rect eye_template = new Rect();
+        clasificator.detectMultiScale(mROI, eyes, 1.15, 2,
+            Objdetect.CASCADE_FIND_BIGGEST_OBJECT | Objdetect.CASCADE_SCALE_IMAGE, new Size(30, 30),
+            new Size());//Cascade를 사용하여 가장 큰 물체를 찾는다.
+
+        Rect[] eyesArray = eyes.toArray();
+        for (int i = 0; i < eyesArray.length;) {
+            Rect e = eyesArray[i];
+            e.x = area.x + e.x;
+            e.y = area.y + e.y;
+            Rect eye_only_rectangle = new Rect((int) e.tl().x, (int)(e.tl().y + e.height * 0.4), (int) e.width, (int)(e.height * 0.6));
+            mROI = mGray.submat(eye_only_rectangle);
+            Mat vyrez = mRgba.submat(eye_only_rectangle);//찾아낸 eye 영역 중 일부를 잘라내어 저장한다.
+
+
+            Core.MinMaxLocResult mmG = Core.minMaxLoc(mROI);//가장 밝고 어두운 영역을 찾음.
+
+            Core.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
+            iris.x = mmG.minLoc.x + eye_only_rectangle.x;//가장 어두운 영역을 눈의 동공중점으로 놓는다.
+            iris.y = mmG.minLoc.y + eye_only_rectangle.y;//눈 영역 내 동공중점을 중심으로~~
+            eye_template = new Rect((int) iris.x - size / 2, (int) iris.y - size / 2, size, size);
+            //~~하는 변 길이가 size인 정사각형을 eye_template로 하고 이를 출력한다.
+            
+            Core.rectangle(mRgba, eye_template.tl(), eye_template.br(),
+                new Scalar(255, 0, 0, 255), 2);//이건 그냥 그림그리기.
+            
+            template = (mGray.submat(eye_template)).clone();//클론을 통해 원본영상을 손대지 않는다.
+            return template;
+        }
+        return template;
+    }
+    private void match_eye(Rect area, Mat mTemplate) { //template를 보고 일치하는 것이 있는지 검사.
+    	/* 이건 이전에 찾았던 Mat template보고 이와 가장 닮은거 위치 찾는거 같음. 
+    	 * 매력적이긴 하지만 이도 역시 기하학적인 특성을 고려 안함. -> Blob 중점을 원 중점이라 놓는것과 같음*/
+        Point matchLoc;
+        Mat mROI = mGray.submat(area);
+        int result_cols = mROI.cols() - mTemplate.cols() + 1;
+        int result_rows = mROI.rows() - mTemplate.rows() + 1;
+        // Check for bad template size
+        if (mTemplate.cols() == 0 || mTemplate.rows() == 0) {
+            return;
+        }
+        Mat mResult = new Mat(result_cols, result_rows, CvType.CV_8U);
+
+        Imgproc.matchTemplate(mROI, mTemplate, mResult, Imgproc.TM_SQDIFF_NORMED);
+        // Method가 TM_SQDIFF계열이므로 mTemplate는 일치하는 대상일 %가 높을수록 밝기가 낮다.
+
+        Core.MinMaxLocResult mmres = Core.minMaxLoc(mResult); // 
+        matchLoc = mmres.minLoc; // 계열은 일치시 0이며, 다를수록 커진다.
+
+        Point matchLoc_tx = new Point(matchLoc.x + area.x, matchLoc.y + area.y);
+        Point matchLoc_ty = new Point(matchLoc.x + mTemplate.cols() + area.x,
+            matchLoc.y + mTemplate.rows() + area.y);
+
+        Core.rectangle(mRgba, matchLoc_tx, matchLoc_ty, new Scalar(255, 255, 0,
+            255));
+        Rect rec = new Rect(matchLoc_tx, matchLoc_ty);
+
+    }
+    
+    
 	
 	private void warn_eyeglasses(Mat src){
 		
