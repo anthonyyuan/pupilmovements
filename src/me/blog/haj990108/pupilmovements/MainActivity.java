@@ -658,7 +658,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
     }
     private void match_eye(Rect area, Mat mTemplate) { //template를 보고 일치하는 것이 있는지 검사.
     	/* 이건 이전에 찾았던 Mat template보고 이와 가장 닮은거 위치 찾는거 같음. 
-    	 * 매력적이긴 하지만 이도 역시 기하학적인 특성을 고려 안함. -> Blob 중점을 원 중점이라 놓는것과 같음*/
+    	 * 매력적이긴 하지만 이도 역시 기하학적인 특성을 고려 안함. -> Blob 중점을 원 중점이라 놓는것과 같음*/ 
         Point matchLoc;
         Mat mROI = mGray.submat(area);
         int result_cols = mROI.cols() - mTemplate.cols() + 1;
@@ -705,6 +705,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	}
 	
 	private void remove_eyeglasses(Mat src){
+		//여기서는 실제로 안경을 제거해야 한다!!
 		//안경 인식을 해도 너무 불안정해서 막 기울어짐. 안경얼굴인식 따로 만들고 이거 쓰자.
 		//clone이랑 copyTo 둘다 hard copy 라는데 왜 그러지... http://answers.opencv.org/question/7682
 		
