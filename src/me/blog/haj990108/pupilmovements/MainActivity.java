@@ -574,7 +574,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
 		Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
-		stabilize_eye(final_face.submat(eyeLR));//rescale_eye(final_face.submat(eyeLR).clone());
+		
+		Mat eyeLR_mat = final_face.submat(eyeLR);
+		Mat rot_mat = get_rotation_mat_of_eye(eyeLR_mat.clone());
+		if(rot_mat.cols() < 1) return final_face;
+		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size()); // 회전.
 		
 		//현재는 eyeL에 대해서만 눈 이동 찾기를 진행한다.
 		
@@ -645,12 +649,15 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	
 	//double prevEyeCornerLen = 0; // 맨 처음의 왼눈 오른쪽구석 ~ 오른눈 왼쪽구석
 	
-	private void stabilize_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
+	private Mat get_rotation_mat_of_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
 		
 		Imgproc.equalizeHist(src, src);
 		//Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
 		// 가우시안에 비해 특징모서리는 살려둠.
+		
+		
 		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
+		
 		
 		boolean isEyeglass = false;
 		EyeglassesFloodfill : for(int y = 0; y < src.rows(); y++){
@@ -661,7 +668,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
     			
     		}
         }
-		if(isEyeglass) return;
+		if(isEyeglass) return new Mat();
 		
 		
 		// 1. 가운데서부터 양 옆으로, y는 밑에서부터 2/3 지점까지 검사하여 코에 가까운 눈의 끝점 2개를 찾고 점 p,q라고 놓는다.
@@ -687,7 +694,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	        }
 		}
 		
-		if(leftCorner.x == 0 && rightCorner.x == 0) return;
+		if(leftCorner.x == 0 && rightCorner.x == 0) return new Mat();
 		
 		Core.circle(src, leftCorner, 2, new Scalar(100), 2);
 		Core.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
@@ -707,8 +714,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// prev_angle = angle;
 		
 		
-		final double DESIRED_RIGHT_CORNER_X = 0.67; //1-0.33
-		final double DESIRED_LEFT_CORNER_X = 0.33;
+		
+		final double DESIRED_LEFT_CORNER_X = 0.30;
+		final double DESIRED_RIGHT_CORNER_X = 1 - DESIRED_LEFT_CORNER_X; //1-0.33
 		final double DESIRED_LEFT_CORNER_Y = 0.44;
 		
 		final int DESIRED_WIDTH = src.width();
@@ -733,8 +741,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		// 3. 현재 거리를 이전꺼로 맞춰 회전한다.
 		
-		
-		Imgproc.warpAffine(src.clone(), src, rot_mat, src.size()); 
+		return rot_mat;
+		//Imgproc.warpAffine(src.clone(), src, rot_mat, src.size()); 
 		
 		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
 		
