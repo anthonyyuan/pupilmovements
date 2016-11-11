@@ -339,7 +339,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 				detectEyeLocation(facesArray);
 			} else { // 얼굴찾기 실험2 : BLC
 				
-				// TODO : 역광보정 +  안경추적까지 넣으면 진짜 대박
 				// 안경때문에 나중에 눈영역 histEq할때 동공이 안보임. -> 눈 영역따고 바로 안경 지우고 histEq해야...
 				
 				test = new Mat();
@@ -461,6 +460,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	
 	double prev_angle, prev_scale = 0;
 	
+	
 	private Mat adjustedFace(Mat faceOnly) { // 얼굴 기울임을 보정함.
 		double eyesCenter_x, eyesCenter_y, dx, dy, len, angle;
 		eyesCenter_x = 0.5*(eyeCL.x + eyeCR.x); eyesCenter_y = 0.5*(eyeCL.y + eyeCR.y);
@@ -500,7 +500,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
 		Imgproc.warpAffine(faceOnly, adjustedFace, rot_mat, adjustedFace.size()); // 최대 크기로 할려면 Imgproc.INTER_LINEAR
 		
-		return stabilizated_eye(adjustedFace);
+		return detect_eye_move(adjustedFace);
 		
 		/*앞으로 할거
 		 * 2. 안경 착용 보정
@@ -563,9 +563,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return dst;
 	}
 	
-	////====여기 아래서부터는 내가 알고리즘 구조구성을 위해 만든 코드들이다===////
+	Mat prev = new Mat();
 	
-	private Mat stabilizated_eye(Mat final_face){
+	private Mat detect_eye_move(Mat final_face){
 		
 		Rect eyeL = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),true);
 		Rect eyeR = final_eye_area(new Rect(0,0, final_face.width(), final_face.height()),false);
@@ -574,15 +574,51 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
 		Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
-		warn_eyeglasses(final_face.submat(eyeLR).clone());
+		stabilize_eye(final_face.submat(eyeLR));//rescale_eye(final_face.submat(eyeLR).clone());
 		
-		//맨 아래의 /*를 지우자
+		//현재는 eyeL에 대해서만 눈 이동 찾기를 진행한다.
+		
+		/*//<-눈 회전 끝나고 지우자.
+		
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
 			
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
+		final int thresh = 15;//10
 		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
-				15, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+		
+		/*Mat test = Mat.ones(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type());
+		test.convertTo(test, -1, 100);//회색 Mat
+		
+		Core.subtract(test, mat_eyeL.clone(), mat_eyeL); // 회색 - 검은 배경 흰 눈 = 회색 배경 검은 눈
+		
+		Core.subtract(
+				Mat.zeros(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type()),
+						mat_eyeL.clone(), mat_eyeL); // 검게 나옴 =  if a>b ; a-b ; 0
+		
+		//Core.absdiff(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(|a - b|)*	
+		
+		Mat motion = new Mat();
+		
+		
+		if(prev.cols() > 1) {
+			
+			if(prev.cols() != mat_eyeL.cols() && prev.rows() != mat_eyeL.rows())
+				Imgproc.resize(prev, prev, new Size(mat_eyeL.cols(), mat_eyeL.rows()));
+			
+			Core.subtract(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(a - b)
+			//차집합 구하는 코드. 작동함.
+			
+			Log.d("TAG", "prev.size = "+prev.size());
+			
+			mat_eyeL.copyTo(prev);
+			motion.copyTo(mat_eyeL);
+			
+		}else{
+			mat_eyeL.copyTo(prev);
+			return final_face;
+		}
 		
 		/*MatOfKeyPoint matOfKeyPoints = new MatOfKeyPoint();
         FeatureDetector blobDetector = FeatureDetector.create(FeatureDetector.SIMPLEBLOB);
@@ -605,6 +641,103 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		//Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
 		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
+	}
+	
+	//double prevEyeCornerLen = 0; // 맨 처음의 왼눈 오른쪽구석 ~ 오른눈 왼쪽구석
+	
+	private void stabilize_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
+		
+		Imgproc.equalizeHist(src, src);
+		//Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
+		// 가우시안에 비해 특징모서리는 살려둠.
+		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
+		
+		boolean isEyeglass = false;
+		EyeglassesFloodfill : for(int y = 0; y < src.rows(); y++){
+    		if (src.get(y,src.cols()/2)[0] > 10){
+    			toastShowUI("안경을 벗어주세요!");
+    			isEyeglass = true;
+    			break EyeglassesFloodfill;
+    			
+    		}
+        }
+		if(isEyeglass) return;
+		
+		
+		// 1. 가운데서부터 양 옆으로, y는 밑에서부터 2/3 지점까지 검사하여 코에 가까운 눈의 끝점 2개를 찾고 점 p,q라고 놓는다.
+		//   (각 눈별로 안하는 이유는, 고개를 옆으로 살짝 돌리는 경우 가운데 쳐다봐도 오른쪽으로 인식될 수 있기 때문임, 또한 먼 쪽은 인풋에서부터 잘렸을 수 있음.)
+				
+		Point leftCorner = new Point(0,0), rightCorner = new Point(0,0);
+		
+		LeftCorner : for(int x = src.cols()/2; x > src.cols()/4; x--){
+			for(int y = src.rows()-1; y > 0.4*src.rows(); y--){
+	    		if (src.get(y,x)[0] > 10){
+	    			leftCorner = new Point(x,y);
+	    			break LeftCorner;
+	    		}
+	        }
+		}
+		
+		RightCorner : for(int x = src.cols()/2 + 1; x < src.cols()*0.75; x++){
+			for(int y = src.rows()-1; y > 0.4*src.rows(); y--){
+	    		if (src.get(y,x)[0] > 10){
+	    			rightCorner = new Point(x,y);
+	    			break RightCorner;
+	    		}
+	        }
+		}
+		
+		if(leftCorner.x == 0 && rightCorner.x == 0) return;
+		
+		Core.circle(src, leftCorner, 2, new Scalar(100), 2);
+		Core.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
+		
+		
+		// 2. 이전 선분 p'q'와 현재 pq와의 거리비, pq와 p'q' 사이의 각을 구한다.
+		//    (어쩌피 3.서 맞출꺼면 그냥 표준 비율을 구하는게 낫지 않을까? 맨 처음꺼에 대한 영향이 너무 큰데..)
+		
+		double cornerCenter_x, cornerCenter_y, dx, dy, len, angle;
+		cornerCenter_x = 0.5*(leftCorner.x + rightCorner.x); cornerCenter_y = 0.5*(leftCorner.y + rightCorner.y);
+		
+		dx = rightCorner.x - leftCorner.x; dy = rightCorner.y - leftCorner.y;
+		len = Math.sqrt(dx*dx + dy*dy);
+		angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+		
+		// if(prev_angle != 0 && angle > 20 ) angle = prev_angle;
+		// prev_angle = angle;
+		
+		
+		final double DESIRED_RIGHT_CORNER_X = 0.67; //1-0.33
+		final double DESIRED_LEFT_CORNER_X = 0.33;
+		final double DESIRED_LEFT_CORNER_Y = 0.44;
+		
+		final int DESIRED_WIDTH = src.width();
+		final int DESIRED_HEIGHT = src.height();//DESIRED가 전체 Mat에서의 비율이므로 src의 col,row가 맞다.
+		
+		double desiredLen = DESIRED_RIGHT_CORNER_X - DESIRED_LEFT_CORNER_X; // 내가 원하는 표준 얼굴 내 눈 비율
+		double scale = desiredLen * DESIRED_WIDTH / len; // 원본 눈 사이 거리 -> 표준 눈 사이 거리
+		
+		// if(prev_scale != 0 && scale - prev_scale > 0.3 ) scale = 0.5 * (scale + prev_scale);
+		// prev_scale = scale;
+		
+		double ex = DESIRED_WIDTH * 0.5 - cornerCenter_x;
+		double ey = DESIRED_HEIGHT * DESIRED_LEFT_CORNER_Y - cornerCenter_y;
+		
+		Mat rot_mat = Imgproc.getRotationMatrix2D(new Point(cornerCenter_x, cornerCenter_y), angle, scale);
+		// 원하는 각도, 크기에 대한 변환 행렬을 취득한다.
+		
+		double colorArr[] = rot_mat.get(0,2); // rot_mat의 (x,y)=(2,0)좌표
+		rot_mat.put(0, 2, colorArr[0] + ex);
+		colorArr = rot_mat.get(1,2);
+		rot_mat.put(1, 2, colorArr[0] + ey); // 원하는 중심으로 눈의 중심을 이동
+		
+		// 3. 현재 거리를 이전꺼로 맞춰 회전한다.
+		
+		
+		Imgproc.warpAffine(src.clone(), src, rot_mat, src.size()); 
+		
+		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
+		
 	}
 	
 	/*if (learn_frames < 5) {
@@ -687,22 +820,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
     
     
 	
-	private void warn_eyeglasses(Mat src){
-		
-		Imgproc.equalizeHist(src, src);
-		//Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
-		// 가우시안에 비해 특징모서리는 살려둠.
-		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
-		
-		
-		EyeglassesFloodfill : for(int y = 0; y < src.rows(); y++){
-    		if (src.get(y,src.cols()/2)[0] > 10){
-    			toastShowUI("안경을 벗어주세요!");
-    			break EyeglassesFloodfill;
-    		}
-        }
-		
-	}
+	
 	
 	private void remove_eyeglasses(Mat src){
 		//안경 인식을 해도 너무 불안정해서 막 기울어짐. 안경얼굴인식 따로 만들고 이거 쓰자.
