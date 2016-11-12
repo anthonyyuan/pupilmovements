@@ -578,21 +578,23 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Mat eyeLR_mat = final_face.submat(eyeLR);
 		Mat rot_mat = get_rotation_mat_of_eye(eyeLR_mat.clone());
 		if(rot_mat.cols() < 1) return final_face;
-		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size()); // 회전.
+		
+		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size(),
+				Imgproc.INTER_LINEAR, Imgproc.BORDER_CONSTANT, new Scalar(128)); // 회전 : 배경색 = 128
 		
 		//현재는 eyeL에 대해서만 눈 이동 찾기를 진행한다.
-		
-		/*//<-눈 회전 끝나고 지우자.
 		
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
 			
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
-		final int thresh = 15;//10
+		final int thresh = 10;
 		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
 				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
 		
-		/*Mat test = Mat.ones(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type());
+		/*테스트
+		
+		Mat test = Mat.ones(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type());
 		test.convertTo(test, -1, 100);//회색 Mat
 		
 		Core.subtract(test, mat_eyeL.clone(), mat_eyeL); // 회색 - 검은 배경 흰 눈 = 회색 배경 검은 눈
@@ -601,10 +603,15 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 				Mat.zeros(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type()),
 						mat_eyeL.clone(), mat_eyeL); // 검게 나옴 =  if a>b ; a-b ; 0
 		
-		//Core.absdiff(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(|a - b|)*	
+		//Core.absdiff(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(|a - b|)
+		 */
 		
-		Mat motion = new Mat();
+		//손상된 동공을 원으로 재건.
+		reconstruct_pupil(mat_eyeL);
 		
+		//이전 Mat과의 차이를 출력.
+		// -> 눈 움직임 완전고정을 해도 잡음이 너무 크다. -> 원형으로 동공을 재건해야 가능! 
+		/*Mat motion = new Mat();
 		
 		if(prev.cols() > 1) {
 			
@@ -622,17 +629,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		}else{
 			mat_eyeL.copyTo(prev);
 			return final_face;
-		}
+		}*/
 		
-		/*MatOfKeyPoint matOfKeyPoints = new MatOfKeyPoint();
-        FeatureDetector blobDetector = FeatureDetector.create(FeatureDetector.SIMPLEBLOB);
-        blobDetector.detect(mat_eyeL, matOfKeyPoints);
-        
-        
-        KeyPoint[] blopList = matOfKeyPoints.toArray();
-        
-        Log.d("TAG", "검출된 Blop 갯수 = "+matOfKeyPoints.size());
-        Log.d("TAG", "검출된 Blop 갯수 = "+blopList[0].pt);*/
 		
 		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
 		 * 공개한 소스코드랑 논문이 제시한 방법이랑 달라. 
@@ -647,7 +645,42 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return final_face;
 	}
 	
-	//double prevEyeCornerLen = 0; // 맨 처음의 왼눈 오른쪽구석 ~ 오른눈 왼쪽구석
+	private void reconstruct_pupil(Mat eyeMat){
+		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
+		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
+		Imgproc.dilate(eyeMat, eyeMat, kernel);//찌기
+		Imgproc.erode(eyeMat, eyeMat, kernel);//빼기
+		
+		Imgproc.Canny(eyeMat, eyeMat, 5, 70);
+		Imgproc.GaussianBlur(eyeMat, eyeMat, new Size(3, 3), 0);
+		
+		Mat circles = new Mat();
+		Imgproc.HoughCircles(eyeMat, circles, Imgproc.CV_HOUGH_GRADIENT, 1, eyeMat.cols()/8);
+		
+		if (circles.cols() > 0) {
+		    for (int x = 0; x < circles.cols(); x++) {
+		        double vCircle[] = circles.get(0,x);
+
+		        if (vCircle == null)
+		            break;
+
+		        Point pt = new Point(Math.round(vCircle[0]), Math.round(vCircle[1]));
+		        int radius = (int)Math.round(vCircle[2]);
+
+		        // draw the found circle
+		        Core.circle(eyeMat, pt, radius, new Scalar(150), 1);
+		        Core.circle(eyeMat, pt, 3, new Scalar(150), 1);
+		    }
+		}
+		Log.d("TAG", "검출된 원 갯수 = "+circles.cols()); //원도 작동 안한다.
+*/		
+		/*MatOfKeyPoint matOfKeyPoints = new MatOfKeyPoint();
+        FeatureDetector blobDetector = FeatureDetector.create(FeatureDetector.SIMPLEBLOB);
+        blobDetector.detect(eyeMat, matOfKeyPoints);
+        KeyPoint[] blopList = matOfKeyPoints.toArray();
+        
+        Log.d("TAG", "검출된 Blop 갯수 = "+blopList.length); threshold 늘리고 줄여봐도 작동 안됨*/
+	}
 	
 	private Mat get_rotation_mat_of_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
 		
@@ -696,8 +729,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		if(leftCorner.x == 0 && rightCorner.x == 0) return new Mat();
 		
-		Core.circle(src, leftCorner, 2, new Scalar(100), 2);
-		Core.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
+		//Core.circle(src, leftCorner, 2, new Scalar(100), 2);
+		//Core.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
 		
 		
 		// 2. 이전 선분 p'q'와 현재 pq와의 거리비, pq와 p'q' 사이의 각을 구한다.
