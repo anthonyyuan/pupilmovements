@@ -576,21 +576,29 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
 		
 		Mat eyeLR_mat = final_face.submat(eyeLR);
-		Mat rot_mat = get_rotation_mat_of_eye(eyeLR_mat.clone());
+		Mat fat_eyeLR_mat = eyeLR_mat.clone();
+		Mat rot_mat = get_rotation_mat_of_eye(fat_eyeLR_mat);//get_rotation_mat_of_eye(eyeLR_mat.clone());//TODO : col,row알고 지우자.
 		if(rot_mat.cols() < 1) return final_face;
-		
 		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size(),
 				Imgproc.INTER_LINEAR, Imgproc.BORDER_CONSTANT, new Scalar(128)); // 회전 : 배경색 = 128
 		
 		//현재는 eyeL에 대해서만 눈 이동 찾기를 진행한다.
 		
+		get_both_eye_size(fat_eyeLR_mat, LEFT_EYE_AREA_COLOR, RIGHT_EYE_AREA_COLOR); fat_eyeLR_mat.release();
+		//회전이 된 이후에 작동이 되어야 하므로 여기에 있어야 한다.
+		//여기서는 rot_mat가 아니고 eyeLR_mat임에 유의!
+		
+		
+		
+		
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
 			
-		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
+		/*Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		final int thresh = 10;
 		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
-				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+				thresh, 255, Imgproc.THRESH_BINARY_INV );*/ // 반전시켜서 용량 절약 하자.
+		/*TODO : col,row알고 주석 지우자. */
 		
 		/*테스트
 		
@@ -607,7 +615,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		 */
 		
 		//손상된 동공을 원으로 재건.
-		reconstruct_pupil(mat_eyeL);
+		//reconstruct_pupil(mat_eyeL); //TODO : col,row알고 주석 지우자.
 		
 		//이전 Mat과의 차이를 출력.
 		// -> 눈 움직임 완전고정을 해도 잡음이 너무 크다. -> 원형으로 동공을 재건해야 가능! 
@@ -646,6 +654,24 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	}
 	
 	private void reconstruct_pupil(Mat eyeMat){
+		
+		Point avg;
+		int addX = 0, addY = 0, pixelNum = 0;
+		
+		for(int x=0; x<eyeMat.cols(); x++){
+			for(int y=0; y<eyeMat.rows(); y++){
+	    		if (eyeMat.get(y,x)[0] > 10){
+	    			addX += x;
+	    			addY += y;
+	    			pixelNum ++;
+	    		}
+	        }
+		}
+		
+		avg = new Point(addX/pixelNum, addY/pixelNum);
+		
+		Core.circle(eyeMat, avg, 3, new Scalar(100), 1);
+		
 		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
 		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
 		Imgproc.dilate(eyeMat, eyeMat, kernel);//찌기
@@ -681,7 +707,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         
         Log.d("TAG", "검출된 Blop 갯수 = "+blopList.length); threshold 늘리고 줄여봐도 작동 안됨*/
 	}
-	
+		
 	private Mat get_rotation_mat_of_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
 		
 		Imgproc.equalizeHist(src, src);
@@ -709,10 +735,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 				
 		Point leftCorner = new Point(0,0), rightCorner = new Point(0,0);
 		
+		
 		LeftCorner : for(int x = src.cols()/2; x > src.cols()/4; x--){
 			for(int y = src.rows()-1; y > 0.4*src.rows(); y--){
 	    		if (src.get(y,x)[0] > 10){
 	    			leftCorner = new Point(x,y);
+	    			Imgproc.floodFill(src, Mat.zeros(src.rows() + 2, src.cols() + 2, src.type()), 
+	    					leftCorner, new Scalar(LEFT_EYE_AREA_COLOR));
 	    			break LeftCorner;
 	    		}
 	        }
@@ -722,6 +751,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			for(int y = src.rows()-1; y > 0.4*src.rows(); y--){
 	    		if (src.get(y,x)[0] > 10){
 	    			rightCorner = new Point(x,y);
+	    			Imgproc.floodFill(src, Mat.zeros(src.rows() + 2, src.cols() + 2, src.type()), 
+	    					rightCorner, new Scalar(RIGHT_EYE_AREA_COLOR));
 	    			break RightCorner;
 	    		}
 	        }
@@ -774,11 +805,78 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		// 3. 현재 거리를 이전꺼로 맞춰 회전한다.
 		
+		
 		return rot_mat;
 		//Imgproc.warpAffine(src.clone(), src, rot_mat, src.size()); 
 		
 		// 얼굴 영상을 원하는 각도 & 크기 & 위치로 변환
 		
+	}
+
+	final int LEFT_EYE_AREA_COLOR = 140;
+	final int RIGHT_EYE_AREA_COLOR = 160;
+	int eye_width = 0, eye_height = 0;
+	
+	private void get_both_eye_size(Mat eyeMat, int LEFT_EYE_AREA_COLOR, int RIGHT_EYE_AREA_COLOR){
+
+		int aX, bX, aY, bY; aX = bX = aY = bY = 0;
+		int dxL, dyL, dxR, dyR;
+		
+		for(int x =0; x<eyeMat.cols()/2; x++){
+			for(int y=0; y<eyeMat.rows(); y++){
+	    		if (eyeMat.get(y,x)[0] == LEFT_EYE_AREA_COLOR){
+	    			if(aX == 0){
+	    				aX = x;
+	    			}
+	    			if(bX < x){
+	    				bX = x;
+	    			}
+	    			if(aY == 0 || aY > y){
+	    				aY = y;
+	    			}
+	    			if(bY < y){
+	    				bY = y;
+	    			}
+	    		}
+	        }
+		}
+		
+		dxL = bX - aX;
+		dyL = bY - aY;
+		aX = bX = aY = bY = 0;
+		
+		RightEye : for(int x = eyeMat.cols()/2 + 1; x < eyeMat.cols(); x++){
+			for(int y=0; y<eyeMat.rows(); y++){
+	    		if (eyeMat.get(y,x)[0] == RIGHT_EYE_AREA_COLOR){
+	    			if(aX == 0){
+	    				aX = x;
+	    			}
+	    			if(bX < x){
+	    				bX = x;
+	    			}
+	    			if(aY == 0 || aY > y){
+	    				aY = y;
+	    			}
+	    			if(bY < y){
+	    				bY = y;
+	    			}
+	    		}
+	        }
+		}
+		
+		dxR = bX - aX;
+		dyR = bY - aY;
+		
+		if(dxL * dyL > dxR * dyR){
+			eye_width = dxL; eye_height = dyL;
+		}else{
+			eye_width = dxR; eye_height = dyR;
+		}
+		
+		Log.d("TAG", "eye_width, eye_height = "+eye_width+", "+eye_height);
+		
+		/*Imgproc.floodFill(eyeMat, Mat.zeros(eyeMat.rows() + 2, eyeMat.cols() + 2, eyeMat.type()), 
+				new Point(leftX, bothY), new Scalar(100));*/
 	}
 	
 	/*if (learn_frames < 5) {
