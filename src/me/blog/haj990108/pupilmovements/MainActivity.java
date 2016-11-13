@@ -656,6 +656,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	}
 	
 	private Point average_point(Mat src){
+		
+		//TODO : threshold(10)해서 얻은 동공 + 그림자 영역의 중점을 구함
+		//근데 이게 그림자에 의한 방해를 매우 많이 받음.
+		//고로 마법의 binary mask와 같이 동공만 추려내고 average를 구해야 한다.
+		
 		Point avg = new Point(0,0);
 		int addX = 0, addY = 0, pixelNum = 0;
 		
