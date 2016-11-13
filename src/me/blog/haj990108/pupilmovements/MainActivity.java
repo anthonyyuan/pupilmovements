@@ -577,7 +577,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		Mat eyeLR_mat = final_face.submat(eyeLR);
 		Mat fat_eyeLR_mat = eyeLR_mat.clone();
-		Mat rot_mat = get_rotation_mat_of_eye(fat_eyeLR_mat);//get_rotation_mat_of_eye(eyeLR_mat.clone());//TODO : col,row알고 지우자.
+		Mat rot_mat = get_rotation_mat_of_eye(fat_eyeLR_mat);
 		if(rot_mat.cols() < 1) return final_face;
 		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size(),
 				Imgproc.INTER_LINEAR, Imgproc.BORDER_CONSTANT, new Scalar(128)); // 회전 : 배경색 = 128
@@ -594,11 +594,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Mat mat_eyeL = final_face.submat(eyeL); Mat mat_eyeR = final_face.submat(eyeR);
 		
 			
-		/*Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
+		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		final int thresh = 10;
 		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
-				thresh, 255, Imgproc.THRESH_BINARY_INV );*/ // 반전시켜서 용량 절약 하자.
-		/*TODO : col,row알고 주석 지우자. */
+				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
+		
 		
 		/*테스트
 		
@@ -615,7 +615,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		 */
 		
 		//손상된 동공을 원으로 재건.
-		//reconstruct_pupil(mat_eyeL); //TODO : col,row알고 주석 지우자.
+		Point avg = average_point(mat_eyeL);
+		avg.x += eyeL.x; avg.y += eyeL.y; 
+		reconstruct_pupil(eyeLR_mat, avg);//reconstruct_pupil(mat_eyeL); //TODO : col,row알고 주석 지우자.
 		
 		//이전 Mat과의 차이를 출력.
 		// -> 눈 움직임 완전고정을 해도 잡음이 너무 크다. -> 원형으로 동공을 재건해야 가능! 
@@ -653,14 +655,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return final_face;
 	}
 	
-	private void reconstruct_pupil(Mat eyeMat){
-		
-		Point avg;
+	private Point average_point(Mat src){
+		Point avg = new Point(0,0);
 		int addX = 0, addY = 0, pixelNum = 0;
 		
-		for(int x=0; x<eyeMat.cols(); x++){
-			for(int y=0; y<eyeMat.rows(); y++){
-	    		if (eyeMat.get(y,x)[0] > 10){
+		for(int x=0; x<src.cols(); x++){
+			for(int y=0; y<src.rows(); y++){
+	    		if (src.get(y,x)[0] > 10){
 	    			addX += x;
 	    			addY += y;
 	    			pixelNum ++;
@@ -668,9 +669,28 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	        }
 		}
 		
-		avg = new Point(addX/pixelNum, addY/pixelNum);
+		avg.x = addX/pixelNum; avg.y = addY/pixelNum;
+		return avg;
+	}
+	
+	private void reconstruct_pupil(Mat eyeMat, Point avg){ //원점이 eyeLR_mat에 맞춰져 있다.
 		
+		final double avg_x = avg.x; final double avg_y = avg.y;//흰 픽셀 평균위치
+		final double width_ratio = (eye_width)/(eye_width + eye_height);
+		
+		final double cx = eye_xL + 0.5*eye_width;
+		final double cy = eye_yL + 0.5*eye_height;//눈의 중앙
+		
+		
+		final double x = avg_x + (avg_x - cx)*(width_ratio);
+		final double y = avg_y + (avg_y - cy)*(1 - width_ratio);
+		
+		Core.circle(eyeMat, new Point(cx,cy), 3, new Scalar(100), 1);
 		Core.circle(eyeMat, avg, 3, new Scalar(100), 1);
+		Core.circle(eyeMat, new Point(x,y), 3, new Scalar(100), 2);
+		
+		Log.d("TAG", "(x,y) = "+ new Point(x,y));
+		//TODO : 완성은 했는데.... avg가 실제 동공중점이면 더 좋았을거 같다.
 		
 		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
 		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
@@ -815,7 +835,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	final int LEFT_EYE_AREA_COLOR = 140;
 	final int RIGHT_EYE_AREA_COLOR = 160;
-	int eye_width = 0, eye_height = 0;
+	int eye_xL = 0, eye_yL = 0, eye_width = 0, eye_height = 0;
 	
 	private void get_both_eye_size(Mat eyeMat, int LEFT_EYE_AREA_COLOR, int RIGHT_EYE_AREA_COLOR){
 
@@ -843,6 +863,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		dxL = bX - aX;
 		dyL = bY - aY;
+		eye_xL = aX; eye_yL = aY;
+		
 		aX = bX = aY = bY = 0;
 		
 		RightEye : for(int x = eyeMat.cols()/2 + 1; x < eyeMat.cols(); x++){
@@ -867,13 +889,16 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		dxR = bX - aX;
 		dyR = bY - aY;
 		
+		
+		
 		if(dxL * dyL > dxR * dyR){
 			eye_width = dxL; eye_height = dyL;
 		}else{
 			eye_width = dxR; eye_height = dyR;
 		}
 		
-		Log.d("TAG", "eye_width, eye_height = "+eye_width+", "+eye_height);
+		//Log.d("TAG", "eye_xL, eye_yL = "+eye_xL+", "+eye_yL);
+		//Log.d("TAG", "eye_width, eye_height = "+eye_width+", "+eye_height);
 		
 		/*Imgproc.floodFill(eyeMat, Mat.zeros(eyeMat.rows() + 2, eyeMat.cols() + 2, eyeMat.type()), 
 				new Point(leftX, bothY), new Scalar(100));*/
