@@ -26,6 +26,7 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
 import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
@@ -645,13 +646,37 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return final_face;
 	}
 	
+	private Rect largest_area(Mat src){ // src가 기준 좌표계가 된다.
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(src, contours, new Mat(), Imgproc.RETR_LIST,Imgproc.CHAIN_APPROX_SIMPLE);
+		double largest_area=0; int largest_contour_index=0; Rect bounding_rect = new Rect();
+		
+		
+		for(int i=0; i< contours.size();i++){
+	        double area = Imgproc.contourArea(contours.get(i));
+	        if(area > largest_area){
+	        	largest_area = area;
+	        	largest_contour_index = i;
+	        	bounding_rect = Imgproc.boundingRect(contours.get(i));
+	        }
+	    }
+		
+		return bounding_rect;
+	}
+	
 	private void reconstruct_pupil(Mat eyeMat){
 		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
-		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
+		Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
 		Imgproc.dilate(eyeMat, eyeMat, kernel);//찌기
+		kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3,3));
 		Imgproc.erode(eyeMat, eyeMat, kernel);//빼기
 		
-		Imgproc.Canny(eyeMat, eyeMat, 5, 70);
+		Rect r = largest_area(eyeMat);
+		
+		Core.rectangle(eyeMat, new Point(r.x,r.y),
+    			new Point(r.x+r.width,r.y+r.height),new Scalar(100));
+		
+		/*Imgproc.Canny(eyeMat, eyeMat, 5, 70);
 		Imgproc.GaussianBlur(eyeMat, eyeMat, new Size(3, 3), 0);
 		
 		Mat circles = new Mat();
