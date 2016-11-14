@@ -26,6 +26,7 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
 import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
@@ -615,8 +616,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		 */
 		
 		//손상된 동공을 원으로 재건.
-		Point avg = average_point(mat_eyeL);
-		avg.x += eyeL.x; avg.y += eyeL.y; 
+		Point avg = average_point(mat_eyeL.clone());
+		avg.x += eyeL.x; avg.y += eyeL.y; // 좌표계 : mat_eyeL -> eyeLR_mat
 		reconstruct_pupil(eyeLR_mat, avg);//reconstruct_pupil(mat_eyeL); //TODO : col,row알고 주석 지우자.
 		
 		//이전 Mat과의 차이를 출력.
@@ -655,14 +656,35 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return final_face;
 	}
 	
+	private Rect largest_area(Mat src){ // src가 기준 좌표계가 된다.
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(src, contours, new Mat(), Imgproc.RETR_LIST,Imgproc.CHAIN_APPROX_SIMPLE);
+		double largest_area=0; int largest_contour_index=0; Rect bounding_rect = new Rect();
+		
+		
+		for(int i=0; i< contours.size();i++){
+	        double area = Imgproc.contourArea(contours.get(i));
+	        if(area > largest_area){
+	        	largest_area = area;
+	        	largest_contour_index = i;
+	        	bounding_rect = Imgproc.boundingRect(contours.get(i));
+	        }
+	    }
+		
+		return bounding_rect;
+	}
+	
 	private Point average_point(Mat src){
 		
 		//TODO : threshold(10)해서 얻은 동공 + 그림자 영역의 중점을 구함
 		//근데 이게 그림자에 의한 방해를 매우 많이 받음.
 		//고로 마법의 binary mask와 같이 동공만 추려내고 average를 구해야 한다.
 		
-		Point avg = new Point(0,0);
-		int addX = 0, addY = 0, pixelNum = 0;
+		
+		Rect r = largest_area(src);
+		Point avg = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+		
+		/*int addX = 0, addY = 0, pixelNum = 0;
 		
 		for(int x=0; x<src.cols(); x++){
 			for(int y=0; y<src.rows(); y++){
@@ -674,7 +696,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 	        }
 		}
 		
-		avg.x = addX/pixelNum; avg.y = addY/pixelNum;
+		avg.x = addX/pixelNum; avg.y = addY/pixelNum;*/
 		return avg;
 	}
 	
@@ -690,7 +712,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		final double x = avg_x + (avg_x - cx)*(width_ratio);
 		final double y = avg_y + (avg_y - cy)*(1 - width_ratio);
 		
-		Core.circle(eyeMat, new Point(cx,cy), 3, new Scalar(100), 1);
+		//Core.circle(eyeMat, new Point(cx,cy), 3, new Scalar(100), 1);
 		Core.circle(eyeMat, avg, 3, new Scalar(100), 1);
 		Core.circle(eyeMat, new Point(x,y), 3, new Scalar(100), 2);
 		
