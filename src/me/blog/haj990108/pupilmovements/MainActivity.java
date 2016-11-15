@@ -27,6 +27,7 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfDouble;
 import org.opencv.core.MatOfKeyPoint;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
@@ -589,48 +590,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 			
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
-		final int thresh = 10;
-		Imgproc.threshold(final_face.submat(eyeL), final_face.submat(eyeL), 
-				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
-		
-		/*테스트
-		
-		Mat test = Mat.ones(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type());
-		test.convertTo(test, -1, 100);//회색 Mat
-		
-		Core.subtract(test, mat_eyeL.clone(), mat_eyeL); // 회색 - 검은 배경 흰 눈 = 회색 배경 검은 눈
-		
-		Core.subtract(
-				Mat.zeros(new Size( mat_eyeL.cols(), mat_eyeL.rows() ), mat_eyeL.type()),
-						mat_eyeL.clone(), mat_eyeL); // 검게 나옴 =  if a>b ; a-b ; 0
-		
-		//Core.absdiff(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(|a - b|)
-		 */
+		Point center = get_eye_center(mat_eyeL);
+		/*final int thresh = 10;
+		Imgproc.threshold(mat_eyeL, mat_eyeL, 
+				thresh, 255, Imgproc.THRESH_BINARY_INV );*/ // 반전시켜서 용량 절약 하자.
 		
 		//손상된 동공을 원으로 재건.
-		reconstruct_pupil(mat_eyeL);
-		
-		//이전 Mat과의 차이를 출력.
-		// -> 눈 움직임 완전고정을 해도 잡음이 너무 크다. -> 원형으로 동공을 재건해야 가능! 
-		/*Mat motion = new Mat();
-		
-		if(prev.cols() > 1) {
-			
-			if(prev.cols() != mat_eyeL.cols() && prev.rows() != mat_eyeL.rows())
-				Imgproc.resize(prev, prev, new Size(mat_eyeL.cols(), mat_eyeL.rows()));
-			
-			Core.subtract(prev.clone(), mat_eyeL.clone(), motion); // dst=saturate(a - b)
-			//차집합 구하는 코드. 작동함.
-			
-			Log.d("TAG", "prev.size = "+prev.size());
-			
-			mat_eyeL.copyTo(prev);
-			motion.copyTo(mat_eyeL);
-			
-		}else{
-			mat_eyeL.copyTo(prev);
-			return final_face;
-		}*/
+		//reconstruct_pupil(mat_eyeL);
 		
 		
 		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
@@ -644,6 +610,60 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		//Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
 		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
+	}
+	
+	private Point get_eye_center(Mat src){ //TODO : 내가 지금 실험 하는 장소!
+		Imgproc.GaussianBlur(src, src, new Size(3, 3), 0);
+		
+		Mat eye, pupil; eye = new Mat(); pupil = new Mat(); // eye = pupil = new Mat(); 이렇게 하면 eye = pupil이 동일한게 된다.
+		Imgproc.threshold(src, eye, 30, 255, Imgproc.THRESH_BINARY_INV );
+		
+		/* TODO : 지금 eye가 정확하게 눈의 테두리를 검출하지 않는다. 정확하게 검출하는 방법이 없을까?
+		 		: 이게 된다면 눈 감는거 여부도 정확하게 검출할 수 있을텐데... (angle값으로 해도 되지만... 뭐...)*/
+		Imgproc.threshold(src, pupil, 10, 255, Imgproc.THRESH_BINARY_INV ); // pupil
+		
+		Mat mask = Mat.zeros(eye.size(), eye.type()); // 눈의 대략적인 모양을 찾는다.
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(eye, contours, new Mat(), Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
+		
+		
+		final double ocha = 0.08;//0.04;
+		for (int i = 0 ; i < contours.size() ; i++)
+		{
+		    //int contourSize = (int)contours.get(i).total();
+
+		    MatOfPoint2f curContour2f = new MatOfPoint2f(contours.get(i).toArray());
+		    Imgproc.approxPolyDP(curContour2f, curContour2f, ocha * Imgproc.arcLength(curContour2f, true), true);
+		    contours.set(i, new MatOfPoint(curContour2f.toArray()));
+
+		    Imgproc.drawContours(mask, contours, i, new Scalar(255), 1);
+		}
+		
+		
+		/*Rect r = largest_area(eye);
+		Mat eye_edge = Mat.zeros(eye.size(), eye.type()); Mat eye_dots = eye_edge.clone();
+		Core.rectangle(eye_edge, r.tl(), r.br(), new Scalar(255));*/
+		
+		Imgproc.Canny(eye, eye, 5, 70); // eye
+		Imgproc.Canny(pupil, pupil, 5, 70);
+		
+		/*Core.subtract(eye_edge, eye, eye_dots);
+		Core.subtract(eye_edge, eye_dots, src);*/
+		
+		
+		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
+		Imgproc.dilate(pupil, pupil, kernel);//찌기
+		Imgproc.dilate(eye, eye, kernel);//찌기*/		
+		
+		
+		//Imgproc.GaussianBlur(eye, eye, new Size(3, 3), 0);
+		//Imgproc.GaussianBlur(pupil, pupil, new Size(3, 3), 0);
+		
+		mask.copyTo(src);
+		
+		//Core.add(eye, pupil, src);
+		//Core.subtract(pupil, eye, src); // 동공 테두리 중 잘리지 않은 부분을 리턴
+		return new Point();
 	}
 	
 	private Rect largest_area(Mat src){ // src가 기준 좌표계가 된다.
