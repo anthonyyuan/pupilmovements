@@ -731,9 +731,12 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			pupil_d = 2 * Math.sqrt(dx*dx + dy*dy);
 			pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
 			
-			String str = "";
+			prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);
+			Core.add(prev_eyeMat, eyeMat, eyeMat);
+			
+			/*String str = "";
 			for(int i=0; i<pupil_d; i++) str += "#";
-			Log.i("TEST", "d = "+str);
+			Log.i("TEST", "d = "+str);*/
 			
 			//TODO : 대충 완성 된거 같은데 눈 감을때 d랑 angle가 너무 잡음이 심해짐.
 			//		 사전에 눈 감은거를 angle등을 통해 거르는 작업을 해야 함.
