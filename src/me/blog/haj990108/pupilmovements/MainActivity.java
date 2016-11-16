@@ -565,7 +565,6 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return dst;
 	}
 	
-	Mat prev = new Mat();
 	
 	private Mat detect_eye_move(Mat final_face){
 		
@@ -590,13 +589,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 			
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
-		Point center = get_eye_center(mat_eyeL);
-		/*final int thresh = 10;
+		
+		final int thresh = 10;
 		Imgproc.threshold(mat_eyeL, mat_eyeL, 
-				thresh, 255, Imgproc.THRESH_BINARY_INV );*/ // 반전시켜서 용량 절약 하자.
+				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
 		
 		//손상된 동공을 원으로 재건.
-		//reconstruct_pupil(mat_eyeL);
+		reconstruct_pupil(mat_eyeL);
 		
 		
 		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
@@ -622,12 +621,15 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		 		: 이게 된다면 눈 감는거 여부도 정확하게 검출할 수 있을텐데... (angle값으로 해도 되지만... 뭐...)*/
 		Imgproc.threshold(src, pupil, 10, 255, Imgproc.THRESH_BINARY_INV ); // pupil
 		
+		
+		
+		
 		Mat mask = Mat.zeros(eye.size(), eye.type()); // 눈의 대략적인 모양을 찾는다.
 		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
-		Imgproc.findContours(eye, contours, new Mat(), Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
+		Imgproc.findContours(eye, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE); //RETR_CCOMP
 		
 		
-		final double ocha = 0.08;//0.04;
+		final double ocha = 0.04;//0.04;
 		for (int i = 0 ; i < contours.size() ; i++)
 		{
 		    //int contourSize = (int)contours.get(i).total();
@@ -636,14 +638,14 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		    Imgproc.approxPolyDP(curContour2f, curContour2f, ocha * Imgproc.arcLength(curContour2f, true), true);
 		    contours.set(i, new MatOfPoint(curContour2f.toArray()));
 
-		    Imgproc.drawContours(mask, contours, i, new Scalar(255), 1);
+		    Imgproc.drawContours(mask, contours, i, new Scalar(255), 1);//선이 아닌 채우기는 두께 = -1
 		}
-		
 		
 		/*Rect r = largest_area(eye);
 		Mat eye_edge = Mat.zeros(eye.size(), eye.type()); Mat eye_dots = eye_edge.clone();
 		Core.rectangle(eye_edge, r.tl(), r.br(), new Scalar(255));*/
 		
+
 		Imgproc.Canny(eye, eye, 5, 70); // eye
 		Imgproc.Canny(pupil, pupil, 5, 70);
 		
@@ -659,7 +661,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		//Imgproc.GaussianBlur(eye, eye, new Size(3, 3), 0);
 		//Imgproc.GaussianBlur(pupil, pupil, new Size(3, 3), 0);
 		
-		mask.copyTo(src);
+		//mask.copyTo(src);
+		Core.add(mask, pupil, src);
+		//Core.add(mask, eye, src);
 		
 		//Core.add(eye, pupil, src);
 		//Core.subtract(pupil, eye, src); // 동공 테두리 중 잘리지 않은 부분을 리턴
@@ -684,6 +688,10 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return bounding_rect;
 	}
 	
+	private Mat prev_eyeMat = new Mat();
+	private double pupil_d;
+	private double pupil_angle;
+	
 	private void reconstruct_pupil(Mat eyeMat){
 		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
 		Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
@@ -691,40 +699,66 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3,3));
 		Imgproc.erode(eyeMat, eyeMat, kernel);//빼기
 		
-		Rect r = largest_area(eyeMat);
+		Rect r = largest_area(eyeMat.clone());
 		
-		Core.rectangle(eyeMat, new Point(r.x,r.y),
-    			new Point(r.x+r.width,r.y+r.height),new Scalar(100));
+		for(int x = 0; x < eyeMat.cols(); x++){
+        	for(int y = 0; y < eyeMat.rows(); y++){
+        		if (x<r.x || x>=r.x+r.width || y<r.y || y>=r.y+r.height){
+        			if(eyeMat.get(y,x)[0] > 0){ // 확실히 put이 느리다. 이걸로 최적화?
+        				eyeMat.put(y, x, 0);
+        			}
+        		}
+            }
+        }
 		
-		/*Imgproc.Canny(eyeMat, eyeMat, 5, 70);
-		Imgproc.GaussianBlur(eyeMat, eyeMat, new Size(3, 3), 0);
-		
-		Mat circles = new Mat();
-		Imgproc.HoughCircles(eyeMat, circles, Imgproc.CV_HOUGH_GRADIENT, 1, eyeMat.cols()/8);
-		
-		if (circles.cols() > 0) {
-		    for (int x = 0; x < circles.cols(); x++) {
-		        double vCircle[] = circles.get(0,x);
-
-		        if (vCircle == null)
-		            break;
-
-		        Point pt = new Point(Math.round(vCircle[0]), Math.round(vCircle[1]));
-		        int radius = (int)Math.round(vCircle[2]);
-
-		        // draw the found circle
-		        Core.circle(eyeMat, pt, radius, new Scalar(150), 1);
-		        Core.circle(eyeMat, pt, 3, new Scalar(150), 1);
-		    }
+		if(prev_eyeMat.width() < 1) {
+			prev_eyeMat = eyeMat;
+			return;
+		}else{
+			Mat dst = new Mat();
+			Core.bitwise_and(prev_eyeMat, eyeMat, dst);
+			
+			eyeMat.copyTo(prev_eyeMat);
+			dst.copyTo(eyeMat); dst.release();
+			
+			Point prev_p, and_p;
+			r = largest_area(prev_eyeMat.clone()); prev_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			r = largest_area(eyeMat.clone()); and_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			
+			final double dx =  and_p.x - prev_p.x;
+			final double dy =  and_p.y - prev_p.y;
+			
+			pupil_d = 2 * Math.sqrt(dx*dx + dy*dy);
+			pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+			
+			String str = "";
+			for(int i=0; i<pupil_d; i++) str += "#";
+			Log.i("TEST", "d = "+str);
+			
+			//TODO : 대충 완성 된거 같은데 눈 감을때 d랑 angle가 너무 잡음이 심해짐.
+			//		 사전에 눈 감은거를 angle등을 통해 거르는 작업을 해야 함.
 		}
-		Log.d("TAG", "검출된 원 갯수 = "+circles.cols()); //원도 작동 안한다.
-*/		
-		/*MatOfKeyPoint matOfKeyPoints = new MatOfKeyPoint();
-        FeatureDetector blobDetector = FeatureDetector.create(FeatureDetector.SIMPLEBLOB);
-        blobDetector.detect(eyeMat, matOfKeyPoints);
-        KeyPoint[] blopList = matOfKeyPoints.toArray();
-        
-        Log.d("TAG", "검출된 Blop 갯수 = "+blopList.length); threshold 늘리고 줄여봐도 작동 안됨*/
+		
+		
+		
+		
+			
+			
+		//Core.bitwise_and(prev_eyeMat, eyeMat, eyeMat);
+		
+		/*Mat p_c = new Mat(); Mat c_p = new Mat();
+		Core.subtract(prev_eyeMat, eyeMat, p_c);
+		//p_c.copyTo(eyeMat);
+		Core.subtract(eyeMat, prev_eyeMat, c_p);
+		Core.add(c_p, p_c.clone(), p_c);
+		Core.subtract(prev_eyeMat, p_c, eyeMat);*/
+		
+		//prev_eyeMat = eyeMat;
+		//eyeMat.copyTo(prev_eyeMat);//이건 맨 마지막에 넣을거니까 포인터로 하는게 더 빠르지 않을까
+		/*Core.rectangle(eyeMat, new Point(r.x,r.y),
+    			new Point(r.x+r.width,r.y+r.height),new Scalar(100));*/
+		
+		
 	}
 	
 	private Mat get_rotation_mat_of_eye(Mat src){ //눈 구석에 맞춰서 회전 및 정렬한다.
