@@ -38,8 +38,10 @@ import org.opencv.features2d.FeatureDetector;
 import org.opencv.features2d.KeyPoint;
 import org.opencv.highgui.Highgui;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.Moments;
 import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.objdetect.Objdetect;
+import org.opencv.utils.Converters;
 
 import android.app.Activity;
 import android.content.Context;
@@ -688,6 +690,34 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		return bounding_rect;
 	}
 	
+	private Point mass_center(Mat src){ // 이게 그나마 최선인듯 : http://answers.opencv.org/question/52328
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(src, contours, new Mat(), Imgproc.RETR_LIST,Imgproc.CHAIN_APPROX_SIMPLE);
+		
+		//moments
+		List<Moments> mu = new ArrayList<Moments>(contours.size());
+		for (int i = 0; i < contours.size(); i++) {
+			mu.add(i, Imgproc.moments(contours.get(i), false));
+		}
+		//mass center
+		List<MatOfPoint2f> mc = new ArrayList<MatOfPoint2f>(contours.size()); 
+		for( int i = 0; i < contours.size(); i++ ){
+			mc.add(new MatOfPoint2f(
+					new Point(
+							mu.get(i).get_m10() / mu.get(i).get_m00(), 
+							mu.get(i).get_m01() / mu.get(i).get_m00()
+							)));
+		}
+		if(mc.size() > 0){
+			List<Point> list = new ArrayList<Point>();
+			Converters.Mat_to_vector_Point(mc.get(0), list);
+			return list.get(0);
+		}else{
+			return new Point(0,0);
+		}
+		
+	}
+	
 	private Mat prev_eyeMat = new Mat();
 	private double pupil_d;
 	private double pupil_angle;
@@ -701,7 +731,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		Rect r = largest_area(eyeMat.clone());
 		
-		for(int x = 0; x < eyeMat.cols(); x++){
+		for(int x = 0; x < eyeMat.cols(); x++){ // largest_area를 제외한 나머지를 제거. contour.size == 1
         	for(int y = 0; y < eyeMat.rows(); y++){
         		if (x<r.x || x>=r.x+r.width || y<r.y || y>=r.y+r.height){
         			if(eyeMat.get(y,x)[0] > 0){ // 확실히 put이 느리다. 이걸로 최적화?
@@ -718,12 +748,17 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			Mat dst = new Mat();
 			Core.bitwise_and(prev_eyeMat, eyeMat, dst);
 			
-			eyeMat.copyTo(prev_eyeMat);
-			dst.copyTo(eyeMat); dst.release();
+			eyeMat.copyTo(prev_eyeMat);			 //과거 동공영역 중 현재에 없는 영역 prev_eyeMat에 저장. (회색)
+			dst.copyTo(eyeMat); dst.release();   //eyeMat은 이전과 현재 동공이 겹치는 부분만. (흰색) 
 			
 			Point prev_p, and_p;
-			r = largest_area(prev_eyeMat.clone()); prev_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
-			r = largest_area(eyeMat.clone()); and_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			
+			r = largest_area(prev_eyeMat.clone()); 
+			//prev_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height); //이전 잔상의 사각영역 중점
+			prev_p = mass_center(eyeMat).clone();						 //이전 잔상의 무게중심.
+			
+			r = largest_area(eyeMat.clone());
+			and_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
 			
 			final double dx =  and_p.x - prev_p.x;
 			final double dy =  and_p.y - prev_p.y;
@@ -731,36 +766,18 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			pupil_d = 2 * Math.sqrt(dx*dx + dy*dy);
 			pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
 			
-			prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);
-			Core.add(prev_eyeMat, eyeMat, eyeMat);
+			prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);//prev_eyeMat은 회색 잔상으로 남는다.
+			Core.add(prev_eyeMat, eyeMat, eyeMat);//현재랑 겹치는 부분은 하얀색.
 			
-			/*String str = "";
+			Core.circle(eyeMat, prev_p, 2, new Scalar(100), 2);
+			
+			String str = "";
 			for(int i=0; i<pupil_d; i++) str += "#";
-			Log.i("TEST", "d = "+str);*/
+			Log.i("TEST", "d = "+str);
 			
 			//TODO : 대충 완성 된거 같은데 눈 감을때 d랑 angle가 너무 잡음이 심해짐.
 			//		 사전에 눈 감은거를 angle등을 통해 거르는 작업을 해야 함.
 		}
-		
-		
-		
-		
-			
-			
-		//Core.bitwise_and(prev_eyeMat, eyeMat, eyeMat);
-		
-		/*Mat p_c = new Mat(); Mat c_p = new Mat();
-		Core.subtract(prev_eyeMat, eyeMat, p_c);
-		//p_c.copyTo(eyeMat);
-		Core.subtract(eyeMat, prev_eyeMat, c_p);
-		Core.add(c_p, p_c.clone(), p_c);
-		Core.subtract(prev_eyeMat, p_c, eyeMat);*/
-		
-		//prev_eyeMat = eyeMat;
-		//eyeMat.copyTo(prev_eyeMat);//이건 맨 마지막에 넣을거니까 포인터로 하는게 더 빠르지 않을까
-		/*Core.rectangle(eyeMat, new Point(r.x,r.y),
-    			new Point(r.x+r.width,r.y+r.height),new Scalar(100));*/
-		
 		
 	}
 	
