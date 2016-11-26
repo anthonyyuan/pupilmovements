@@ -744,32 +744,50 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		if(prev_eyeMat.width() < 1) {
 			prev_eyeMat = eyeMat;
 			return;
-		}else{
-			Mat dst = new Mat();
-			Core.bitwise_and(prev_eyeMat, eyeMat, dst);
+		}else{ //이전 prev_eyeMat이 있을 경우
+			Mat and_eyeMat = new Mat();
+			Core.bitwise_and(prev_eyeMat, eyeMat, and_eyeMat); //(prev_eyeMat : 이전영역, eyeMat : 이전과 현재 동공이 겹치는 부분)
 			
-			eyeMat.copyTo(prev_eyeMat);			 //과거 동공영역 중 현재에 없는 영역 prev_eyeMat에 저장. (회색)
-			dst.copyTo(eyeMat); dst.release();   //eyeMat은 이전과 현재 동공이 겹치는 부분만. (흰색) 
+			
+			//and_eyeMat.copyTo(eyeMat); and_eyeMat.release();
 			
 			Point prev_p, and_p;
 			
-			r = largest_area(prev_eyeMat.clone()); 
-			//prev_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height); //이전 잔상의 사각영역 중점
-			prev_p = mass_center(eyeMat).clone();						 //이전 잔상의 무게중심.
+			r = largest_area(prev_eyeMat.clone());
+			prev_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height); //이전 잔상의 사각영역 중점
 			
-			r = largest_area(eyeMat.clone());
-			and_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			//prev_p = mass_center(eyeMat).clone();  //이전 잔상의 무게중심.
+						
+			//r = largest_area(eyeMat.clone());
+			// = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			
+			and_p = mass_center(and_eyeMat.clone());
+			
+			int and = 2;//and 영역이 검출되면 2, 아니면 1
+			if(and_p.x < 1 || and_p.y < 1){ //and 영역이 없는 경우. 눈을 안 감아도 가끔 있다.
+				Log.e("TAG", "겹치는 부분인 eyeMat가 안보여!!");
+				
+				and = 1;
+				
+				r = largest_area(eyeMat.clone());
+				and_p = new Point(r.x + 0.5*r.width, r.y + 0.5*r.height);
+			}
+			
+			eyeMat.copyTo(prev_eyeMat);	//and연산 끝났으니 prev_eyeMat 업데이트. 화면에 보이는건 현재 뿐.
 			
 			final double dx =  and_p.x - prev_p.x;
 			final double dy =  and_p.y - prev_p.y;
 			
-			pupil_d = 2 * Math.sqrt(dx*dx + dy*dy);
+			pupil_d = and * Math.sqrt(dx*dx + dy*dy);
 			pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
 			
-			prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);//prev_eyeMat은 회색 잔상으로 남는다.
-			Core.add(prev_eyeMat, eyeMat, eyeMat);//현재랑 겹치는 부분은 하얀색.
 			
-			Core.circle(eyeMat, prev_p, 2, new Scalar(100), 2);
+			//-- 시각화 & 디버깅
+			/*prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);//prev_eyeMat은 회색 잔상으로 남는다.
+			Core.add(prev_eyeMat, eyeMat, eyeMat);//현재랑 겹치는 부분은 하얀색.*/			
+			
+			Core.circle(eyeMat, and_p, 2, new Scalar(100), 2);
+			Core.circle(eyeMat, prev_p, 2, new Scalar(50), 1);
 			
 			String str = "";
 			for(int i=0; i<pupil_d; i++) str += "#";
