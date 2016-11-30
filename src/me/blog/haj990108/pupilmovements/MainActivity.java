@@ -592,6 +592,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			
 		Imgproc.equalizeHist(mat_eyeL, mat_eyeL);
 		
+		Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
+		Imgproc.erode(mat_eyeL, mat_eyeL, kernel);
+		//Imgproc.dilate(pupil, pupil, kernel);//찌기
+		//Imgproc.dilate(eye, eye, kernel);//찌기	
+		
 		final int thresh = 10;
 		Imgproc.threshold(mat_eyeL, mat_eyeL, 
 				thresh, 255, Imgproc.THRESH_BINARY_INV ); // 반전시켜서 용량 절약 하자.
@@ -659,8 +664,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		/*Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2,2));
 		Imgproc.dilate(pupil, pupil, kernel);//찌기
-		Imgproc.dilate(eye, eye, kernel);//찌기*/		
-		
+		Imgproc.dilate(eye, eye, kernel);//찌기	
+*/
 		
 		//Imgproc.GaussianBlur(eye, eye, new Size(3, 3), 0);
 		//Imgproc.GaussianBlur(pupil, pupil, new Size(3, 3), 0);
