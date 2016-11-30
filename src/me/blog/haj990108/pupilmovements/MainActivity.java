@@ -599,6 +599,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		//손상된 동공을 원으로 재건.
 		reconstruct_pupil(mat_eyeL);
 		
+		Rect canvasRect = final_drawing_area(new Rect(0,0, final_face.width(), final_face.height() ));
+		draw_pupil_movement(final_face.submat(canvasRect));
 		
 		/* TODO : 대조군이 binary mask 말고 그냥 erode쓰고 흰 덩어리 중점 찾은거 같음 ㅆㅃ
 		 * 공개한 소스코드랑 논문이 제시한 방법이랑 달라. 
@@ -718,9 +720,79 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 	}
 	
+	private void draw_pupil_movement(Mat eyeMat){
+		//eyeMat = Mat.zeros(eyeMat.size(), eyeMat.type());//이러면 안됨.
+		Mat.zeros(eyeMat.size(), eyeMat.type()).copyTo(eyeMat);
+		
+		if(cursor.x == 0 && cursor.y == 0) {
+			cursor = new Point(eyeMat.width()/2, eyeMat.height()/2);
+		}
+		
+		Log.d("TAG", "pupil_d = "+ pupil_d);
+		Log.d("TAG", "pupil_angle = "+ pupil_angle);
+		
+		
+		double d_x = pupil_d * Math.cos(pupil_angle);
+		double d_y = pupil_d * Math.sin(pupil_angle);
+		
+		if(cursor.x + d_x >= eyeMat.width()){
+			cursor.x = eyeMat.width()/2; cursor.y = eyeMat.height()/2;
+			//cursor.x = eyeMat.width() - 1;
+		}else if(cursor.x + d_x < 0){
+			cursor.x = 0;
+		}else{
+			cursor.x += d_x;
+		}
+		
+		if(cursor.y + d_y >= eyeMat.height()){
+			cursor.x = eyeMat.width()/2; cursor.y = eyeMat.height()/2;
+			//cursor.y = eyeMat.height() - 1;
+		}else if(cursor.y + d_y < 0){
+			cursor.y = 0;
+		}else{
+			cursor.y += d_y;
+		}
+		//*/
+		
+		Core.circle(eyeMat, cursor, 2, new Scalar(100), 2);
+		
+		//pupil_angle = pupil_angle>=0 ? pupil_angle : pupil_angle+2*Math.PI;//-pi~+pi -> 0~2pi
+		
+		double angle_deg = pupil_angle * 180 / Math.PI;
+		if(pupil_d > 3){
+			if(angle_deg > 45 && angle_deg <= 3*45){
+				//위
+				Core.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/4), 4, new Scalar(200), 4);
+			}else if(angle_deg < -45 && angle_deg >= -3*45){
+				//아래
+				Core.circle(eyeMat, new Point(eyeMat.width()/2, 3*eyeMat.height()/4), 4, new Scalar(200), 4);
+			}else if(angle_deg >= -45 && angle_deg <= 45){
+				//오른쪽
+				Core.circle(eyeMat, new Point(3*eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
+			}else{
+				//왼쪽
+				Core.circle(eyeMat, new Point(eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
+			}//방향에 따라 큰 흰 점을 표시. 
+		}else{
+			//가운데
+			Core.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/2), 4, new Scalar(200), 4);
+			//이게 이동거리 한도를 안정하면 너무 잡음이 크다.
+		}
+		
+		// TODO : 이걸로 내가 원하는 상하좌우로 흰 점이 표시 되는지 확인.
+		
+		
+		//TODO : Core.circle로 위치를 그리고 왔다갔다 한 후 내가 의도한 방향으로 이동하는지 확인.
+		//		 왔다갔다 한 후 제자리로 오지는 않는다. 정확한 동공추적은 불가능 할듯.
+		//		 Point의 ArrayList 만들어서 선분을 이어서 궤적을 확인하자. 이거 할 때 첫 계획 스케치의 변수명 참고하자.
+		
+	}
+	
+	private Point cursor = new Point(0,0);
+	
 	private Mat prev_eyeMat = new Mat();
 	private double pupil_d;
-	private double pupil_angle;
+	private double pupil_angle;//rad
 	
 	private void reconstruct_pupil(Mat eyeMat){
 		//inv 됬으므로 dilate가 살찌기, erode가 살빼기가 된다.
@@ -764,7 +836,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			and_p = mass_center(and_eyeMat.clone());
 			
 			int and = 2;//and 영역이 검출되면 2, 아니면 1
-			if(and_p.x < 1 || and_p.y < 1){ //and 영역이 없는 경우. 눈을 안 감아도 가끔 있다.
+			if(Double.isNaN(and_p.x) ||  and_p.x < 1 || and_p.y < 1){ //and 영역이 없는 경우. 눈을 안 감아도 가끔 있다.
 				Log.e("TAG", "겹치는 부분인 eyeMat가 안보여!!");
 				
 				and = 1;
@@ -779,8 +851,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			final double dy =  and_p.y - prev_p.y;
 			
 			pupil_d = and * Math.sqrt(dx*dx + dy*dy);
-			pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
+			pupil_angle = Math.atan2(dy, dx);//여기서는 RAD
+			//pupil_angle = Math.atan2(dy, dx) * 180.0 / Math.PI; // rad -> deg
 			
+			// if(Double.isNaN(pupil_d)) Log.e("TAG", "pupil_d = NaN : "+and_p+", "+prev_p);
+			// if(Double.isNaN(pupil_angle)) Log.e("TAG", "pupil_angle = NaN : "+and_p+", "+prev_p);
 			
 			//-- 시각화 & 디버깅
 			/*prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);//prev_eyeMat은 회색 잔상으로 남는다.
@@ -1036,6 +1111,16 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         }//안경 영역 제거 (아직까지는 안됨.)
 		
 		skin.copyTo(src);
+	}
+	
+	private Rect final_drawing_area(Rect final_face) { // final_face.tl()를 원점으로 한다.
+		
+		double EYE_SX = 0;
+		double EYE_SY = 0.39;
+		double EYE_SW = 1;
+		double EYE_SH = 0.61;
+		
+		return cutted_eye_area(final_face, true, EYE_SX, EYE_SY, EYE_SW, EYE_SH);
 	}
 	
 	private Rect final_eye_area(Rect final_face, boolean isEyeLeft) { // final_face.tl()를 원점으로 한다.
