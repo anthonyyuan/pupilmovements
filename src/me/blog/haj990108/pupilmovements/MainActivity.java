@@ -35,8 +35,7 @@ import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.core.Core.MinMaxLocResult;
 import org.opencv.features2d.FeatureDetector;
-import org.opencv.features2d.KeyPoint;
-import org.opencv.highgui.Highgui;
+
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgproc.Moments;
 import org.opencv.objdetect.CascadeClassifier;
@@ -247,7 +246,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 		setContentView(R.layout.activity_main);
 
-		mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.NativeCameraView1);
+		mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.JavaCameraView1); // 3.x부터 NativeCameraView1 없어짐.
 		mOpenCvCameraView.setCvCameraViewListener(this);
 
 	}
@@ -380,7 +379,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
 	private void detectEyeLocation(Rect[] facesArray) {
 		if (isLineVisible)
-			Core.rectangle(mRgba, facesArray[0].tl(), facesArray[0].br(),
+			Imgproc.rectangle(mRgba, facesArray[0].tl(), facesArray[0].br(),
 					FACE_RECT_COLOR, 3);// 얼굴 면적을 초록 사각형으로 표시
 
 		xCenter = (facesArray[0].x + facesArray[0].width + facesArray[0].x) / 2;
@@ -389,9 +388,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		if (isLineVisible) {
 			Point center = new Point(xCenter, yCenter);// 얼굴 중점 그리고 중점에 미니원(뽀대용)을 그린다
 
-			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
+			Imgproc.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
 
-			Core.putText(mRgba, "[" + center.x + "," + center.y + "]",
+			Imgproc.putText(mRgba, "[" + center.x + "," + center.y + "]",
 					new Point(center.x + 20, center.y + 20),
 					Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
 							255));// 중점 옆에 위치좌표를 보여주는 텍스트 표시
@@ -429,7 +428,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			eyeCL = new Point(
 					eyeML.x + 0.5*(eyeL.tl().x + eyeL.br().x),
 					eyeML.y + 0.5*(eyeL.tl().y + eyeL.br().y));
-			/*Core.rectangle(smp, 
+			/*Imgproc.rectangle(smp, 
 					new Point(eyeML.x + eyeL.tl().x, eyeML.y + eyeL.tl().y), 
 					new Point(eyeML.x + eyeL.br().x, eyeML.y + eyeL.br().y), FACE_RECT_COLOR, 3);*/ //왼눈 검출 범위
 		}else{
@@ -441,7 +440,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			eyeCR = new Point(
 					eyeMR.x + 0.5*(eyeR.tl().x + eyeR.br().x),
 					eyeMR.y + 0.5*(eyeR.tl().y + eyeR.br().y));
-			/*Core.rectangle(smp, 
+			/*Imgproc.rectangle(smp, 
 					new Point(eyeMR.x + eyeR.tl().x, eyeMR.y + eyeR.tl().y), 
 					new Point(eyeMR.x + eyeR.br().x, eyeMR.y + eyeR.br().y), FACE_RECT_COLOR, 3);*/ //오른눈 검출 범위
 		}else{
@@ -576,14 +575,15 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
-		Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
+		//TODO : Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
+		Imgproc.bilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), 3, 3, 3);
 		
 		Mat eyeLR_mat = final_face.submat(eyeLR);
 		Mat rot_mat = get_rotation_mat_of_eye(eyeLR_mat.clone());
 		if(rot_mat.cols() < 1) return final_face;
 		
 		Imgproc.warpAffine(eyeLR_mat.clone(), eyeLR_mat, rot_mat, eyeLR_mat.size(),
-				Imgproc.INTER_LINEAR, Imgproc.BORDER_CONSTANT, new Scalar(128)); // 회전 : 배경색 = 128
+				Imgproc.INTER_LINEAR, 0, new Scalar(128)); // 회전 : 배경색 = 128
 		
 		//현재는 eyeL에 대해서만 눈 이동 찾기를 진행한다.
 		
@@ -614,8 +614,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		 */
 		
 
-		//Core.rectangle(final_face, eyeL.tl(), eyeL.br(), FACE_RECT_COLOR, 1);
-		//Core.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
+		//Imgproc.rectangle(final_face, eyeL.tl(), eyeL.br(), FACE_RECT_COLOR, 1);
+		//Imgproc.rectangle(final_face, eyeR.tl(), eyeR.br(), FACE_RECT_COLOR, 1);
 		// 이미지 처리에 영향 주므로 그림은 맨 나중에 하자.
 		return final_face;
 	}
@@ -652,7 +652,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		/*Rect r = largest_area(eye);
 		Mat eye_edge = Mat.zeros(eye.size(), eye.type()); Mat eye_dots = eye_edge.clone();
-		Core.rectangle(eye_edge, r.tl(), r.br(), new Scalar(255));*/
+		Imgproc.rectangle(eye_edge, r.tl(), r.br(), new Scalar(255));*/
 		
 
 		Imgproc.Canny(eye, eye, 5, 70); // eye
@@ -759,7 +759,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		}
 		//*/
 		
-		Core.circle(eyeMat, cursor, 2, new Scalar(100), 2);
+		Imgproc.circle(eyeMat, cursor, 2, new Scalar(100), 2);
 		
 		//pupil_angle = pupil_angle>=0 ? pupil_angle : pupil_angle+2*Math.PI;//-pi~+pi -> 0~2pi
 		
@@ -767,27 +767,27 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		if(pupil_d > 3){
 			if(angle_deg > 45 && angle_deg <= 3*45){
 				//위
-				Core.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/4), 4, new Scalar(200), 4);
+				Imgproc.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/4), 4, new Scalar(200), 4);
 			}else if(angle_deg < -45 && angle_deg >= -3*45){
 				//아래
-				Core.circle(eyeMat, new Point(eyeMat.width()/2, 3*eyeMat.height()/4), 4, new Scalar(200), 4);
+				Imgproc.circle(eyeMat, new Point(eyeMat.width()/2, 3*eyeMat.height()/4), 4, new Scalar(200), 4);
 			}else if(angle_deg >= -45 && angle_deg <= 45){
 				//오른쪽
-				Core.circle(eyeMat, new Point(3*eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
+				Imgproc.circle(eyeMat, new Point(3*eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
 			}else{
 				//왼쪽
-				Core.circle(eyeMat, new Point(eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
+				Imgproc.circle(eyeMat, new Point(eyeMat.width()/4, eyeMat.height()/2), 4, new Scalar(200), 4);
 			}//방향에 따라 큰 흰 점을 표시. 
 		}else{
 			//가운데
-			Core.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/2), 4, new Scalar(200), 4);
+			Imgproc.circle(eyeMat, new Point(eyeMat.width()/2, eyeMat.height()/2), 4, new Scalar(200), 4);
 			//이게 이동거리 한도를 안정하면 너무 잡음이 크다.
 		}
 		
 		// TODO : 이걸로 내가 원하는 상하좌우로 흰 점이 표시 되는지 확인.
 		
 		
-		//TODO : Core.circle로 위치를 그리고 왔다갔다 한 후 내가 의도한 방향으로 이동하는지 확인.
+		//TODO : Imgproc.circle로 위치를 그리고 왔다갔다 한 후 내가 의도한 방향으로 이동하는지 확인.
 		//		 왔다갔다 한 후 제자리로 오지는 않는다. 정확한 동공추적은 불가능 할듯.
 		//		 Point의 ArrayList 만들어서 선분을 이어서 궤적을 확인하자. 이거 할 때 첫 계획 스케치의 변수명 참고하자.
 		
@@ -866,8 +866,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 			/*prev_eyeMat.convertTo(prev_eyeMat, -1, 0.5);//prev_eyeMat은 회색 잔상으로 남는다.
 			Core.add(prev_eyeMat, eyeMat, eyeMat);//현재랑 겹치는 부분은 하얀색.*/			
 			
-			Core.circle(eyeMat, and_p, 2, new Scalar(100), 2);
-			Core.circle(eyeMat, prev_p, 2, new Scalar(50), 1);
+			Imgproc.circle(eyeMat, and_p, 2, new Scalar(100), 2);
+			Imgproc.circle(eyeMat, prev_p, 2, new Scalar(50), 1);
 			
 			String str = "";
 			for(int i=0; i<pupil_d; i++) str += "#";
@@ -926,8 +926,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		if(leftCorner.x == 0 && rightCorner.x == 0) return new Mat();
 		
-		//Core.circle(src, leftCorner, 2, new Scalar(100), 2);
-		//Core.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
+		//Imgproc.circle(src, leftCorner, 2, new Scalar(100), 2);
+		//Imgproc.circle(src, rightCorner, 2, new Scalar(100), 2);//잘 됨!
 		
 		
 		// 2. 이전 선분 p'q'와 현재 pq와의 거리비, pq와 p'q' 사이의 각을 구한다.
@@ -1013,13 +1013,13 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 
             Core.MinMaxLocResult mmG = Core.minMaxLoc(mROI);//가장 밝고 어두운 영역을 찾음.
 
-            Core.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
+            Imgproc.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
             iris.x = mmG.minLoc.x + eye_only_rectangle.x;//가장 어두운 영역을 눈의 동공중점으로 놓는다.
             iris.y = mmG.minLoc.y + eye_only_rectangle.y;//눈 영역 내 동공중점을 중심으로~~
             eye_template = new Rect((int) iris.x - size / 2, (int) iris.y - size / 2, size, size);
             //~~하는 변 길이가 size인 정사각형을 eye_template로 하고 이를 출력한다.
             
-            Core.rectangle(mRgba, eye_template.tl(), eye_template.br(),
+            Imgproc.rectangle(mRgba, eye_template.tl(), eye_template.br(),
                 new Scalar(255, 0, 0, 255), 2);//이건 그냥 그림그리기.
             
             template = (mGray.submat(eye_template)).clone();//클론을 통해 원본영상을 손대지 않는다.
@@ -1050,7 +1050,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
         Point matchLoc_ty = new Point(matchLoc.x + mTemplate.cols() + area.x,
             matchLoc.y + mTemplate.rows() + area.y);
 
-        Core.rectangle(mRgba, matchLoc_tx, matchLoc_ty, new Scalar(255, 255, 0,
+        Imgproc.rectangle(mRgba, matchLoc_tx, matchLoc_ty, new Scalar(255, 255, 0,
             255));
         Rect rec = new Rect(matchLoc_tx, matchLoc_ty);
 
@@ -1068,7 +1068,8 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		Mat eye = src.clone(), skinArea = src.clone(); //src.copyTo(eye); src.copyTo(skinArea);
 		
 		Imgproc.equalizeHist(src, src);
-		Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
+		Imgproc.bilateralFilter(src.clone(), src, 3, 3, 3);
+		//TODO : Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
 		// 가우시안에 비해 특징모서리는 살려둠. // 얘는 src랑 dst 달라야 함. http://stackoverflow.com/questions/38460950
 		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
 		

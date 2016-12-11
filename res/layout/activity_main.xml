@@ -4,10 +4,10 @@
     android:layout_height="match_parent"
     tools:context="${relativePackage}.${activityClass}" >
 
-    <org.opencv.android.NativeCameraView
+    <org.opencv.android.JavaCameraView 
         
         android:layout_width="match_parent"
   		android:layout_height="match_parent"
-        android:id="@+id/NativeCameraView1"/>
+        android:id="@+id/JavaCameraView1"/>
 
 </RelativeLayout>
