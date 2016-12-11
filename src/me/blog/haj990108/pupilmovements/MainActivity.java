@@ -575,7 +575,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		
 		Rect eyeLR = new Rect(eyeL.x,eyeL.y,(int)(eyeR.br().x),eyeL.height);
-		//TODO : Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); // 가우시안에 비해 모서리를 잘 잡음.
+		
+		// 가우시안에 비해 모서리를 잘 잡음. 위의 줄은 반려된 2.4.10 코드.
+		//Imgproc.adaptiveBilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), new Size(3,3), 3); 
 		Imgproc.bilateralFilter(final_face.submat(eyeLR).clone(), final_face.submat(eyeLR), 3, 3, 3);
 		
 		Mat eyeLR_mat = final_face.submat(eyeLR);
@@ -1069,8 +1071,9 @@ public class MainActivity extends Activity implements CvCameraViewListener2 {
 		
 		Imgproc.equalizeHist(src, src);
 		Imgproc.bilateralFilter(src.clone(), src, 3, 3, 3);
-		//TODO : Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
+		//Imgproc.adaptiveBilateralFilter(src.clone(), src, new Size(3,3), 3);
 		// 가우시안에 비해 특징모서리는 살려둠. // 얘는 src랑 dst 달라야 함. http://stackoverflow.com/questions/38460950
+		
 		Imgproc.threshold(src, src, 30, 255, Imgproc.THRESH_BINARY_INV ); //둘다 src일때만 실행됨. // 눈과 안경이 분리되어야..
 		
 		src.copyTo(eye); //작동 됨. thr(src,src)에서 src = skin;로 하면 그냥 threshold된 src 나온다. (영향 x)
